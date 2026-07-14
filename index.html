@@ -192,10 +192,9 @@
     width: 380px;
     height: 85vh;
     max-height: 800px;
-    background: rgba(var(--bg-abyss), 0.85);
+    background: rgba(var(--bg-abyss), 0.96); /* Darker and opaque to remove costly backdrop-filter compositing lag */
     border: 1px solid var(--line);
     border-radius: 16px;
-    backdrop-filter: blur(20px);
     z-index: 100;
     padding: 24px;
     display: flex;
@@ -204,6 +203,7 @@
     transform: translateY(-50%) translateX(0);
     transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
     box-shadow: 0 15px 35px rgba(0, 0, 0, 0.5);
+    will-change: transform; /* Promotes sidebar to its own GPU layer for lag-free sliding */
   }
   .control-sidebar.closed {
     transform: translateY(-50%) translateX(calc(100% + 24px));
@@ -215,11 +215,10 @@
     transform: translateY(-50%);
     width: 40px;
     height: 40px;
-    background: rgba(var(--bg-abyss), 0.85);
+    background: rgba(var(--bg-abyss), 0.96);
     border: 1px solid var(--line);
     border-right: none;
     border-radius: 8px 0 0 8px;
-    backdrop-filter: blur(20px);
     color: var(--color-accent);
     cursor: pointer;
     display: flex;
@@ -227,6 +226,7 @@
     justify-content: center;
     font-size: 14px;
     transition: background 0.15s ease;
+    will-change: transform;
   }
   .sidebar-toggle-btn:hover {
     background: rgba(var(--color-accent-rgb), 0.08);
@@ -1608,6 +1608,12 @@
     const height = visCanvas.height;
     const midY = height / 2;
 
+    // Cache computed styles ONCE per frame to prevent costly layout thrashing (Reflow)
+    const bodyStyle = getComputedStyle(document.body);
+    const themeAccent = bodyStyle.getPropertyValue('--color-accent').trim();
+    const themeShadow = bodyStyle.getPropertyValue('--color-shadow').trim();
+    const accentRGB = themeAccent;
+
     const countSetting = parseInt(params.discCount.value);
     const spacingSetting = parseInt(params.discSpacing.value) * DPR;
     const widthSetting = parseFloat(params.discWidth.value) * DPR;
@@ -1618,9 +1624,6 @@
     // 1. Draw central structural Spindle Rod
     if (params.spindle.value === 'true') {
       const spindleGrad = ctx.createLinearGradient(startX - 20, midY - 3 * DPR, startX + waveLength + 20, midY + 3 * DPR);
-      
-      // Determine metallic gradient colors based on active theme
-      const accentRGB = getComputedStyle(document.body).getPropertyValue('--color-accent').trim();
       
       spindleGrad.addColorStop(0, 'rgba(0,0,0,0.6)');
       spindleGrad.addColorStop(0.3, accentRGB);
@@ -1688,9 +1691,6 @@
       // Base minimum size so discs are always flat circles even without sound
       const ry = (10 * DPR) + (amp * 200 * DPR);
       
-      const themeAccent = getComputedStyle(document.body).getPropertyValue('--color-accent').trim();
-      const themeShadow = getComputedStyle(document.body).getPropertyValue('--color-shadow').trim();
-      
       let discColor = themeAccent;
       let shadowColor = themeShadow;
 
@@ -1720,19 +1720,23 @@
 
       // Draw Shadow Element
       if (shadowType !== 'none') {
-        ctx.save();
         if (shadowType === 'soft') {
-          ctx.filter = `blur(${2 * DPR}px)`;
-          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+          // Beautiful multi-layered vector shadows for soft look with 0% compositing lag!
+          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          ctx.beginPath();
+          ctx.ellipse(x + 5 * DPR, midY + 6 * DPR, rx * 1.15, ry + 2 * DPR, 0, 0, Math.PI * 2);
+          ctx.fill();
+          
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          ctx.beginPath();
+          ctx.ellipse(x + 2 * DPR, midY + 3 * DPR, rx * 1.05, ry + 1 * DPR, 0, 0, Math.PI * 2);
+          ctx.fill();
         } else {
           ctx.fillStyle = 'rgba(0,0,0,0.85)';
+          ctx.beginPath();
+          ctx.ellipse(x + 3 * DPR, midY + 4 * DPR, rx, ry, 0, 0, Math.PI * 2);
+          ctx.fill();
         }
-        
-        // Offset shadow slightly down and to the right (simulating top-left light source)
-        ctx.beginPath();
-        ctx.ellipse(x + 3 * DPR, midY + 4 * DPR, rx, ry, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
       }
 
       // Main Disc Body 3D Gradient Filling
