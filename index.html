@@ -2324,15 +2324,12 @@
     // 3D perspective spin rotation during morph transitions
     function get3DProjection(rx, ry, idx) {
       const transitionFactor = Math.sin(idleBrandCurrent * Math.PI);
-      if (transitionFactor < 0.001) {
-        return { x: rx, y: ry, scale: 1.0 };
-      }
       
       const cx = width / 2;
       const cy = midY;
       
-      // helical twist
-      const spinAngle = transitionFactor * Math.PI * 0.85 + (idx / countSetting) * Math.PI * 0.45;
+      // Helical twist scaled globally by transitionFactor to ensure 100% mathematical continuity
+      const spinAngle = transitionFactor * (Math.PI * 0.85 + (idx / countSetting) * Math.PI * 0.45);
       
       const dx = rx - cx;
       const dy = ry - cy;
@@ -2343,10 +2340,10 @@
       const rx_3d = dx * cosR;
       const rz_3d = dx * sinR;
       
-      const perspective = 380 / (380 + rz_3d);
+      const perspective = 380 / (380 + rz_3d * transitionFactor);
       
       const px = cx + rx_3d * perspective;
-      const py = cy + dy * perspective + sinR * 25 * DPR * transitionFactor;
+      const py = cy + dy * perspective + sinR * 20 * DPR * transitionFactor;
       
       return { x: px, y: py, scale: perspective };
     }
