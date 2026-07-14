@@ -1315,11 +1315,25 @@
   function getLetterCoords(letter, count) {
     const pts = [];
     if (letter === 'S') {
+      // 3-part perfect elegant vertical S
       for (let i = 0; i < count; i++) {
         const t = i / (count - 1);
-        const ly = -0.9 + t * 1.8;
-        const angle = t * Math.PI * 1.85 - Math.PI * 0.925;
-        const lx = 0.5 - Math.sin(angle) * 0.32;
+        let lx, ly;
+        if (t < 0.4) {
+          const nt = t / 0.4;
+          const a = -Math.PI * 0.15 - nt * Math.PI * 1.1;
+          lx = 0.5 + Math.cos(a) * 0.26;
+          ly = -0.42 + Math.sin(a) * 0.42;
+        } else if (t < 0.6) {
+          const nt = (t - 0.4) / 0.2;
+          lx = 0.24 + nt * 0.52;
+          ly = -0.12 + nt * 0.24;
+        } else {
+          const nt = (t - 0.6) / 0.4;
+          const a = -Math.PI * 0.15 + nt * Math.PI * 1.1;
+          lx = 0.5 + Math.cos(a) * 0.26;
+          ly = 0.42 + Math.sin(a) * 0.42;
+        }
         pts.push({ lx, ly });
       }
     } else if (letter === 'T') {
@@ -1341,17 +1355,17 @@
       const legCount = count - stemCount - loopCount;
       // Vertical stem
       for (let i = 0; i < stemCount; i++) {
-        pts.push({ lx: 0.2, ly: -0.9 + (i / (stemCount - 1)) * 1.8 });
+        pts.push({ lx: 0.25, ly: -0.9 + (i / (stemCount - 1)) * 1.8 });
       }
       // Loop
       for (let i = 0; i < loopCount; i++) {
         const a = -Math.PI / 2 + (i / (loopCount - 1)) * Math.PI;
-        pts.push({ lx: 0.2 + Math.cos(a) * 0.45, ly: -0.4 + Math.sin(a) * 0.5 });
+        pts.push({ lx: 0.25 + Math.cos(a) * 0.45, ly: -0.4 + Math.sin(a) * 0.45 });
       }
       // Diagonal leg
       for (let i = 0; i < legCount; i++) {
         const t = i / (legCount - 1);
-        pts.push({ lx: 0.28 + t * 0.5, ly: 0.1 + t * 0.8 });
+        pts.push({ lx: 0.32 + t * 0.48, ly: 0.05 + t * 0.85 });
       }
     } else if (letter === 'A') {
       const leg1 = Math.floor(count * 0.4);
@@ -1360,17 +1374,17 @@
       // Left leg
       for (let i = 0; i < leg1; i++) {
         const t = i / (leg1 - 1);
-        pts.push({ lx: 0.5 - t * 0.35, ly: -0.9 + t * 1.8 });
+        pts.push({ lx: 0.5 - t * 0.3, ly: -0.9 + t * 1.8 });
       }
       // Right leg
       for (let i = 0; i < leg2; i++) {
         const t = i / (leg2 - 1);
-        pts.push({ lx: 0.5 + t * 0.35, ly: -0.9 + t * 1.8 });
+        pts.push({ lx: 0.5 + t * 0.3, ly: -0.9 + t * 1.8 });
       }
       // Crossbar
       for (let i = 0; i < cross; i++) {
         const t = i / (cross - 1);
-        pts.push({ lx: 0.32 + t * 0.36, ly: 0.15 });
+        pts.push({ lx: 0.35 + t * 0.3, ly: 0.15 });
       }
     }
     return pts;
@@ -2315,6 +2329,7 @@
       ctx.shadowBlur = 6 * DPR;
       
       // Traverse all discs and build the bent spindle line path!
+      const discsPerLetter = Math.floor(countSetting / 7);
       for (let i = 0; i < countSetting; i++) {
         const targetX = startX + i * spacingSetting;
         const targetY = midY;
@@ -2323,7 +2338,9 @@
         const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
         const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
         
-        if (i === 0) {
+        const isStartOfLetter = (i % discsPerLetter === 0);
+        
+        if (i === 0 || (isStartOfLetter && idleBrandCurrent > 0.01)) {
           ctx.moveTo(discX, discY);
         } else {
           ctx.lineTo(discX, discY);
