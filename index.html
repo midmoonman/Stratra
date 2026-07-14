@@ -225,6 +225,22 @@
   .sidebar-toggle-btn:hover {
     background: rgba(var(--color-accent-rgb), 0.08);
   }
+  .sidebar-toggle-btn.highlight-pulse {
+    animation: button-glow 1.5s infinite alternate;
+    background: rgba(var(--color-accent-rgb), 0.2) !important;
+    border-color: var(--color-accent) !important;
+    box-shadow: 0 0 15px rgba(var(--color-accent-rgb), 0.5);
+  }
+  @keyframes button-glow {
+    0% {
+      box-shadow: 0 0 4px rgba(var(--color-accent-rgb), 0.2);
+      background: rgba(var(--color-accent-rgb), 0.05);
+    }
+    100% {
+      box-shadow: 0 0 20px rgba(var(--color-accent-rgb), 0.7);
+      background: rgba(var(--color-accent-rgb), 0.25);
+    }
+  }
 
   .sidebar-header {
     border-bottom: 1px dashed var(--line);
@@ -548,8 +564,8 @@
 </div>
 
 <!-- Control Panel Sidebar -->
-<div class="control-sidebar" id="sidebar">
-  <button class="sidebar-toggle-btn" id="sidebarToggle" title="Toggle Sidebar (H key)">◂</button>
+<div class="control-sidebar closed" id="sidebar">
+  <button class="sidebar-toggle-btn highlight-pulse" id="sidebarToggle" title="Toggle Sidebar (H key)">◂</button>
   
   <div class="sidebar-header">
     <h2>Control Panel</h2>
@@ -1116,8 +1132,9 @@
   sidebarToggle.addEventListener('click', toggleSidebar);
 
   function toggleSidebar() {
+    sidebarToggle.classList.remove('highlight-pulse');
     sidebar.classList.toggle('closed');
-    sidebarToggle.textContent = sidebar.classList.contains('closed') ? '▸' : '◂';
+    sidebarToggle.textContent = sidebar.classList.contains('closed') ? '◂' : '▸';
   }
 
   themeSelect.addEventListener('change', () => {
