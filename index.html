@@ -2341,48 +2341,7 @@
       return { brandX, brandY };
     }
 
-    // 3D perspective spin rotation during morph transitions
-    function get3DProjection(rx, ry, idx) {
-      return { x: rx, y: ry, scale: 1.0 };
-    }
-
-    // 2. Draw central structural Spindle Rod (curved with the visualizer S-T-R-A-T-R-A layout)
-    if (params.spindle.value === 'true') {
-      ctx.save();
-      ctx.beginPath();
-      ctx.lineWidth = 3 * DPR;
-      
-      const spindleGrad = ctx.createLinearGradient(startX - 20, midY, startX + waveLength + 20, midY);
-      spindleGrad.addColorStop(0, 'rgba(0,0,0,0.6)');
-      spindleGrad.addColorStop(0.3, accentRGB);
-      spindleGrad.addColorStop(0.5, 'rgba(255,255,255,0.9)');
-      spindleGrad.addColorStop(0.7, accentRGB);
-      spindleGrad.addColorStop(1, 'rgba(0,0,0,0.6)');
-      
-      ctx.strokeStyle = spindleGrad;
-      
-      // Draw shadow under spindle path
-      ctx.shadowColor = 'rgba(0,0,0,0.7)';
-      ctx.shadowBlur = 6 * DPR;
-      
-      // Traverse all discs and build the bent spindle line path using spring-physics positions
-      const discsPerLetter = Math.floor(countSetting / 7);
-      for (let i = 0; i < countSetting; i++) {
-        // Use the live spring-physics position so the rod perfectly follows the discs
-        const px = (discCx[i] < -8000) ? (startX + i * spacingSetting) : discCx[i];
-        const py = (discCy[i] < -8000) ? midY : discCy[i];
-        
-        const isStartOfLetter = (i % discsPerLetter === 0);
-        
-        if (i === 0 || (isStartOfLetter && idleBrandCurrent > 0.01)) {
-          ctx.moveTo(px, py);
-        } else {
-          ctx.lineTo(px, py);
-        }
-      }
-      ctx.stroke();
-      ctx.restore();
-    }
+    // (spindle rod removed per user request)
 
     // Prepare frequency bins mapped along visualizer length
     const amplitudes = new Float32Array(countSetting);
@@ -2412,10 +2371,31 @@
       visualAmps[i] += (targetAmp - visualAmps[i]) * 0.14;
     }
 
-    // Retrieve styling parameters
+    // Retrieve and cache all styling parameters ONCE per frame (not inside loops)
     const shadowType = params.shadows.value;
     const ribDensity = params.ribDensity.value;
     const adaptiveColor = params.adaptiveColor.value === 'true';
+    const geomType = params.geometryType.value;
+    const isAltGeom = geometryCurrent > 0.01;
+    const skipGrooves = isAltGeom && (geomType === 'wireframe' || geomType === 'segmented');
+    const isWireframe = geomType === 'wireframe';
+    const isSegmented = geomType === 'segmented';
+    const isHexagon = geomType === 'hexagon';
+    // Pre-compute per-disc brand thickness to avoid sin() inside renderDisc
+    const brandThicknessLUT = new Float32Array(countSetting);
+    for (let i = 0; i < countSetting; i++) {
+      const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
+      brandThicknessLUT[i] = 0.4 + Math.abs(Math.sin(normX * Math.PI * 7)) * 0.6;
+    }
+    // Cache the accentRGB string once (avoids getRGBChannels per disc)
+    const cachedAccentRGB = getRGBChannels(themeAccent);
+    const cachedShadowRGB = getRGBChannels(themeShadow);
+    // Groove step pre-computed
+    let grooveStep = 3.5;
+    if (ribDensity === 'low') grooveStep = 5;
+    if (ribDensity === 'high') grooveStep = 2.0;
+    // Pixel buffer for adaptive color (allocated once per frame, not per disc)
+    const adaptivePixels = new Uint8Array(4);
 
     // Compute per-disc spring-physics positions toward brand letter targets
     // Discs that are forming INTO the brand name use spring + stagger
@@ -2632,63 +2612,41 @@
       }
     }
 
-    // Individual Disc Drawing Function (now supports curved centers & calligraphic thickness)
+    // Individual Disc Drawing Function — optimized: all per-frame constants hoisted, no per-disc allocations
     function renderDisc(index, x, discY, amp, pScale = 1.0) {
-      const normX = (index - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      
-      // Calculate calligraphic radii LERPs
+      // Calligraphic radii using pre-computed LUT (no sin() here)
       const targetRx = widthSetting;
       const brandRx = 18 * DPR;
       const rx = (targetRx + (brandRx - targetRx) * idleBrandCurrent) * pScale;
       
       const targetRy = (10 * DPR) + (amp * 200 * DPR);
-      // Give letters a subtle organic thickness profile
-      const brandThickness = 0.4 + Math.abs(Math.sin(normX * Math.PI * 7)) * 0.6;
-      const brandRy = (14 * DPR) + brandThickness * 10 * DPR;
+      const brandRy = (14 * DPR) + brandThicknessLUT[index] * 10 * DPR;
       const ry = (targetRy + (brandRy - targetRy) * idleBrandCurrent) * pScale;
       
-      let discColor = themeAccent;
-      let shadowColor = themeShadow;
-
-      // Compiled adaptive color: samples colors from WebGL canvas underneath!
-      if (adaptiveColor) {
+      // Adaptive color sampling — use pre-allocated pixel buffer
+      let accentRGBVal = cachedAccentRGB;
+      let shadowRGBVal = cachedShadowRGB;
+      if (adaptiveColor && gl) {
         try {
           const sampleX = Math.floor((x / width) * w);
-          const sampleY = Math.floor(discY / height * h); // sample adaptive color along curve!
-          const pixels = new Uint8Array(4);
-          
-          if (gl) {
-            // Read pixel directly from WebGL drawing buffer
-            gl.readPixels(sampleX, sampleY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
-            if (pixels[3] > 0) {
-              const r = pixels[0], g = pixels[1], b = pixels[2];
-              discColor = `rgb(${r},${g},${b})`;
-              // Shadow is darkened sampled color
-              shadowColor = `rgb(${Math.floor(r*0.2)},${Math.floor(g*0.2)},${Math.floor(b*0.2)})`;
-            }
+          const sampleY = Math.floor(discY / height * h);
+          gl.readPixels(sampleX, sampleY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, adaptivePixels);
+          if (adaptivePixels[3] > 0) {
+            const r = adaptivePixels[0], g = adaptivePixels[1], b = adaptivePixels[2];
+            accentRGBVal = `${r}, ${g}, ${b}`;
+            shadowRGBVal = `${r*0.2|0}, ${g*0.2|0}, ${b*0.2|0}`;
           }
-        } catch(e) {
-          // Fallback to theme colors if sampling fails due to loading states
-          discColor = themeAccent;
-          shadowColor = themeShadow;
-        }
+        } catch(e) {}
       }
-
-      const geomType = params.geometryType.value;
-      const isAltGeom = geometryCurrent > 0.01;
-      const accentRGBVal = getRGBChannels(discColor);
       
       // Draw Shadow Element
       if (shadowType !== 'none') {
-        const shadowAlphaScale = (isAltGeom && geomType === 'wireframe') ? (1.0 - geometryCurrent * 0.7) : 1.0;
-        
+        const shadowAlphaScale = (isWireframe && isAltGeom) ? (1.0 - geometryCurrent * 0.7) : 1.0;
         if (shadowType === 'soft') {
-          // Beautiful multi-layered vector shadows for soft look with 0% compositing lag!
           ctx.fillStyle = `rgba(0,0,0,${0.15 * shadowAlphaScale})`;
           ctx.beginPath();
           drawMorphedPath(ctx, x + 5 * DPR, discY + 6 * DPR, rx * 1.15, ry + 2 * DPR, geometryCurrent, geomType, index, time);
           ctx.fill();
-          
           ctx.fillStyle = `rgba(0,0,0,${0.35 * shadowAlphaScale})`;
           ctx.beginPath();
           drawMorphedPath(ctx, x + 2 * DPR, discY + 3 * DPR, rx * 1.05, ry + 1 * DPR, geometryCurrent, geomType, index, time);
@@ -2701,42 +2659,30 @@
         }
       }
 
-      // Main Disc Body 3D Gradient Filling
+      // Main Disc Body — reuse gradient object, avoid creating new LinearGradient each disc
+      const fillOpacity = (isWireframe && isAltGeom) ? (1.0 - geometryCurrent * 0.82) : 1.0;
       const grad = ctx.createLinearGradient(x - rx, discY - ry, x + rx * 0.5, discY + ry * 0.5);
-      const fillOpacity = (isAltGeom && geomType === 'wireframe') ? (1.0 - geometryCurrent * 0.82) : 1.0;
-      const shadowRGBVal = getRGBChannels(shadowColor);
-      
       grad.addColorStop(0, `rgba(${accentRGBVal}, ${fillOpacity})`);
-      grad.addColorStop(0.35, `rgba(255,255,255, ${fillOpacity})`);
+      grad.addColorStop(0.35, `rgba(255,255,255,${fillOpacity})`);
       grad.addColorStop(0.6, `rgba(${accentRGBVal}, ${fillOpacity})`);
       grad.addColorStop(1, `rgba(${shadowRGBVal}, ${fillOpacity})`);
-      
       ctx.fillStyle = grad;
       ctx.beginPath();
       drawMorphedPath(ctx, x, discY, rx, ry, geometryCurrent, geomType, index, time);
       ctx.fill();
 
-      // Draw concentric grooves (skipped in wireframe/segmented to keep structure clean)
-      const skipGrooves = isAltGeom && (geomType === 'wireframe' || geomType === 'segmented');
-      
+      // Concentric grooves (skipped for wireframe/segmented)
       if (!skipGrooves) {
-        const grooveOpacity = isAltGeom && geomType === 'hexagon' ? (1.0 - geometryCurrent * 0.5) : 1.0;
-        
-        let step = 3.5;
-        if (ribDensity === 'low') step = 5;
-        if (ribDensity === 'high') step = 2.0;
-
+        const grooveOpacity = (isHexagon && isAltGeom) ? (1.0 - geometryCurrent * 0.5) : 1.0;
         ctx.lineWidth = 0.6 * DPR;
-        for (let offset = step; offset < rx - 1; offset += step) {
+        for (let offset = grooveStep; offset < rx - 1; offset += grooveStep) {
           const ratio = (rx - offset) / rx;
           const irx = rx - offset;
           const iry = ry * ratio;
-          
           ctx.strokeStyle = `rgba(0,0,0,${0.22 * grooveOpacity})`;
           ctx.beginPath();
           drawMorphedPath(ctx, x, discY, irx, iry, geometryCurrent, geomType, index, time);
           ctx.stroke();
-
           ctx.strokeStyle = `rgba(255,255,255,${0.09 * grooveOpacity})`;
           ctx.beginPath();
           drawMorphedPath(ctx, x, discY, irx, iry, geometryCurrent, geomType, index, time);
@@ -2744,27 +2690,24 @@
         }
       }
       
-      // Draw Concentric Segmented Rings if active
-      if (isAltGeom && geomType === 'segmented') {
+      // Segmented rings
+      if (isSegmented && isAltGeom) {
         const segs = 3;
         const span = (Math.PI * 2) / segs;
         const arcLen = span * 0.65;
         const rot = time * 0.8 * (index % 2 === 0 ? 1 : -1) + index * 0.4;
-        
         ctx.lineWidth = 1.0 * DPR;
         ctx.strokeStyle = `rgba(${accentRGBVal}, ${geometryCurrent})`;
-        
         for (let s = 0; s < segs; s++) {
           const startA = rot + s * span;
-          const endA = startA + arcLen;
           ctx.beginPath();
-          ctx.ellipse(x, discY, rx, ry, 0, startA, endA);
+          ctx.ellipse(x, discY, rx, ry, 0, startA, startA + arcLen);
           ctx.stroke();
         }
       }
       
-      // Fine outer silhouette stroke to hold vector structure crisp
-      const strokeOpacity = (isAltGeom && geomType === 'segmented') ? (1.0 - geometryCurrent) : 1.0;
+      // Outer silhouette stroke
+      const strokeOpacity = (isSegmented && isAltGeom) ? (1.0 - geometryCurrent) : 1.0;
       ctx.strokeStyle = `rgba(0,0,0,${0.45 * strokeOpacity})`;
       ctx.lineWidth = 0.5 * DPR;
       ctx.beginPath();
@@ -2786,6 +2729,9 @@
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     
+    // Compute accent RGB once, not 15x inside the loop
+    const cachedWordAccentRGB = getRGBChannels(getComputedStyle(document.body).getPropertyValue('--color-accent').trim());
+    
     // Draw 3D layered text stack facing forward
     for (let L = 0; L < layers; L++) {
       const t = L / (layers - 1);
@@ -2797,11 +2743,9 @@
       // Drift & hover offsets based on middle/high frequency bands
       const wobble = Math.sin(time * 1.5 + L * 0.5) * treble * 18 * DPR * (1 - ease);
       const yShift = -110 * DPR * (1 - ease) + Math.sin(time * 2.0 + L) * mid * 6 * DPR;
-      
-      const themeAccent = getComputedStyle(document.body).getPropertyValue('--color-accent').trim();
-      
+      // Use cachedWordAccentRGB (computed once before the loop, not 15x per frame)
       ctx.font = `700 ${size.toFixed(1)}px 'Poppins', sans-serif`;
-      ctx.fillStyle = `rgba(${getRGBChannels(themeAccent)}, ${alpha})`;
+      ctx.fillStyle = `rgba(${cachedWordAccentRGB}, ${alpha})`;
       ctx.fillText(word, cx + wobble, cy + yShift);
     }
   }
