@@ -467,7 +467,44 @@
     outline: none;
   }
   .textarea-group textarea:focus {
+  }
+
+  /* Checkbox customizations */
+  .checkbox-group {
+    margin-bottom: 10px;
+  }
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 12px;
+    color: var(--color-text);
+    cursor: pointer;
+    user-select: none;
+  }
+  .checkbox-label input[type="checkbox"] {
+    appearance: none;
+    width: 15px;
+    height: 15px;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    background: var(--bg-void);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s ease, border-color 0.15s ease;
+  }
+  .checkbox-label input[type="checkbox"]:checked {
+    background: var(--color-accent);
     border-color: var(--color-accent);
+  }
+  .checkbox-label input[type="checkbox"]:checked::after {
+    content: '✓';
+    font-size: 10px;
+    color: var(--bg-void);
+    font-weight: 700;
   }
 
   /* Dock and main action buttons */
@@ -855,6 +892,79 @@
       </div>
     </div>
 
+    <!-- SECTION 5: Advanced FX Modes -->
+    <div class="settings-section">
+      <h3>5. Advanced FX Modes</h3>
+
+      <!-- Mode 1: CRT Simulation -->
+      <div class="control-group checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="mode-crt-toggle"> Enable CRT Emulation
+        </label>
+      </div>
+      <div class="mode-sub-settings" id="crt-settings" style="display: none; padding-left: 12px; border-left: 1px dashed var(--line); margin-top: 4px; margin-bottom: 12px;">
+        <div class="control-group">
+          <label>Curvature Warp <span class="val" id="val-crt-warp">0.12</span></label>
+          <input type="range" id="param-crt-warp" min="0" max="0.3" step="0.01" value="0.12">
+        </div>
+        <div class="control-group checkbox-group">
+          <label class="checkbox-label">
+            <input type="checkbox" id="param-crt-phosphor" checked> RGB Phosphor Grid
+          </label>
+        </div>
+      </div>
+
+      <!-- Mode 2: Kinetic Shake -->
+      <div class="control-group checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="mode-kinetic-toggle"> Enable Glitch & Camera Shake
+        </label>
+      </div>
+      <div class="mode-sub-settings" id="kinetic-settings" style="display: none; padding-left: 12px; border-left: 1px dashed var(--line); margin-top: 4px; margin-bottom: 12px;">
+        <div class="control-group">
+          <label>Camera Shake Intensity <span class="val" id="val-kinetic-shake">1.0</span></label>
+          <input type="range" id="param-kinetic-shake" min="0" max="3.0" step="0.1" value="1.0">
+        </div>
+      </div>
+
+      <!-- Mode 3: Particles -->
+      <div class="control-group checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="mode-particles-toggle"> Enable Particle Swarm
+        </label>
+      </div>
+      <div class="mode-sub-settings" id="particles-settings" style="display: none; padding-left: 12px; border-left: 1px dashed var(--line); margin-top: 4px; margin-bottom: 12px;">
+        <div class="control-group select-group">
+          <label>Swarm Style</label>
+          <select id="param-particles-style">
+            <option value="dust" selected>Floating Ash & Spores</option>
+            <option value="glitch">Digital Glitch Blocks</option>
+          </select>
+        </div>
+        <div class="control-group">
+          <label>Particle Count <span class="val" id="val-particles-count">400</span></label>
+          <input type="range" id="param-particles-count" min="100" max="800" step="50" value="400">
+        </div>
+      </div>
+
+      <!-- Mode 4: Geometry Morph -->
+      <div class="control-group checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="mode-geometry-toggle"> Enable Alternative Geometries
+        </label>
+      </div>
+      <div class="mode-sub-settings" id="geometry-settings" style="display: none; padding-left: 12px; border-left: 1px dashed var(--line); margin-top: 4px; margin-bottom: 12px;">
+        <div class="control-group select-group">
+          <label>Spindle Geometry</label>
+          <select id="param-geometry-type">
+            <option value="wireframe" selected>3D Cylindrical Grid Mesh</option>
+            <option value="segmented">Concentric Segmented Rings</option>
+            <option value="hexagon">3D Hexagonal Plates</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <div class="sidebar-footer">
@@ -890,6 +1000,8 @@
   uniform float u_vortex_intensity;
   uniform float u_vortex_freq;
   uniform float u_vortex_speed;
+  uniform float u_crt_warp;
+  uniform float u_crt_phosphor;
   uniform vec2 u_resolution;
 
   // Simple pseudo-random hash generator
@@ -899,6 +1011,21 @@
 
   void main() {
     vec2 uv = v_texcoord;
+    
+    // Apply CRT screen barrel distortion warp
+    if (u_crt_warp > 0.0) {
+      vec2 coord = uv * 2.0 - 1.0;
+      coord.x *= 1.0 + (coord.y * coord.y) * u_crt_warp * 0.85;
+      coord.y *= 1.0 + (coord.x * coord.x) * u_crt_warp * 0.85;
+      uv = coord * 0.5 + 0.5;
+    }
+    
+    // Clip bezel borders at warped corners
+    if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+      gl_FragColor = vec4(0.005, 0.005, 0.008, 1.0); // dark grey bezel color
+      return;
+    }
+
     vec2 center = vec2(0.5, 0.5);
     
     // Adjust radial distance for aspect ratio
@@ -949,6 +1076,20 @@
     // Soft analogue vignette
     float vignette = smoothstep(0.9, 0.22, length(uv - 0.5));
     color.rgb *= mix(0.04, 1.0, vignette);
+
+    // Apply RGB subpixel Phosphor grid overlay
+    if (u_crt_phosphor > 0.5) {
+      float xPixel = uv.x * u_resolution.x;
+      float rGrid = sin(xPixel * 2.094) * 0.16 + 0.84;
+      float gGrid = sin(xPixel * 2.094 + 2.094) * 0.16 + 0.84;
+      float bGrid = sin(xPixel * 2.094 + 4.188) * 0.16 + 0.84;
+      
+      float scanGrid = sin(uv.y * u_resolution.y * 3.14159) * 0.1 + 0.9;
+      
+      color.r *= rGrid * scanGrid;
+      color.g *= gGrid * scanGrid;
+      color.b *= bGrid * scanGrid;
+    }
     
     gl_FragColor = color;
   }
@@ -1123,6 +1264,70 @@
   // Build the custom dropdown menus
   initCustomSelects();
 
+  // ---------- GPU-Like Orbiting Particle System ----------
+  class VisualParticle {
+    constructor(canvasWidth, canvasHeight) {
+      this.reset(canvasWidth, canvasHeight, true);
+    }
+    
+    reset(w, h, initial = false) {
+      this.angle = Math.random() * Math.PI * 2;
+      this.radius = 80 + Math.random() * 220; // radial size of orbit spindle
+      this.z = (Math.random() - 0.5) * w * 0.82; // position along horizontal rod axis
+      this.yOffset = (Math.random() - 0.5) * 50; // vertical variance
+      this.speed = (0.006 + Math.random() * 0.014) * (Math.random() < 0.5 ? 1 : -1);
+      
+      this.size = 1.0 + Math.random() * 2.2;
+      this.alpha = 0.0;
+      this.maxAlpha = 0.15 + Math.random() * 0.5;
+      this.colorHue = Math.random() < 0.18 ? 1 : 0; // 1 = theme accent, 0 = white
+    }
+    
+    update(w, h, bass, mid, treble, time, style, opacity) {
+      // Swarm speed accelerates on treble frequency energy
+      this.angle += this.speed * (1.0 + treble * 1.6);
+      
+      // Bass peaks contract orbital radius
+      const dynamicRadius = this.radius * (1.0 - bass * 0.15);
+      
+      const midX = w / 2;
+      const midY = h / 2;
+      
+      const cosA = Math.cos(this.angle);
+      const sinA = Math.sin(this.angle);
+      
+      // Orthographic 3D projection squashed vertically to look perspective tilted
+      this.x = midX + this.z + cosA * 10;
+      this.y = midY + this.yOffset + sinA * dynamicRadius * 0.36;
+      
+      // Interpolate fade based on master toggle opacity
+      this.alpha += (this.maxAlpha * opacity - this.alpha) * 0.08;
+    }
+    
+    draw(ctx, accentRGB, style, DPR) {
+      if (this.alpha <= 0.01) return;
+      
+      ctx.fillStyle = this.colorHue === 1 
+        ? `rgba(${accentRGB}, ${this.alpha})` 
+        : `rgba(255, 255, 255, ${this.alpha * 0.65})`;
+      
+      if (style === 'glitch') {
+        const s = this.size * 1.5 * DPR;
+        ctx.fillRect(this.x * DPR - s/2, this.y * DPR - s/2, s, s);
+      } else {
+        ctx.beginPath();
+        ctx.arc(this.x * DPR, this.y * DPR, this.size * DPR, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  const MAX_PARTICLES = 800;
+  let particles = [];
+  for (let i = 0; i < MAX_PARTICLES; i++) {
+    particles.push(new VisualParticle(window.innerWidth, window.innerHeight));
+  }
+
   // Audio Variables
   let audioCtx = null;
   let audioBuffer = null;
@@ -1137,6 +1342,24 @@
   
   // Persistent array to hold LERP values for visual disc sizes
   let visualAmps = new Float32Array(300);
+
+  // Advanced FX Modes State & LERP variables
+  let crtWarpTarget = 0.0;
+  let crtWarpCurrent = 0.0;
+  let crtPhosphorTarget = 0.0;
+  let crtPhosphorCurrent = 0.0;
+  let kineticTarget = 0.0;
+  let kineticCurrent = 0.0;
+  let particlesTarget = 0.0;
+  let particlesCurrent = 0.0;
+  let geometryTarget = 0.0;
+  let geometryCurrent = 0.0;
+  
+  // Camera shake state variables
+  let shakeEnergy = 0.0;
+  let shakeOffsetX = 0.0;
+  let shakeOffsetY = 0.0;
+  let lastBass = 0.0;
 
   let playing = false;
   let startedAt = 0;
@@ -1173,13 +1396,19 @@
     spindle: document.getElementById('spindleSelect'),
     subtitleMode: document.getElementById('subtitleModeSelect'),
     adaptiveColor: document.getElementById('adaptiveColorSelect'),
-    volume: document.getElementById('param-volume') // Added to auto-bind value text
+    volume: document.getElementById('param-volume'),
+    crtWarp: document.getElementById('param-crt-warp'),
+    crtPhosphor: document.getElementById('param-crt-phosphor'),
+    kineticShake: document.getElementById('param-kinetic-shake'),
+    particlesStyle: document.getElementById('param-particles-style'),
+    particlesCount: document.getElementById('param-particles-count'),
+    geometryType: document.getElementById('param-geometry-type')
   };
 
   // Add event listeners to display current parameter values
   Object.keys(params).forEach(key => {
     const input = params[key];
-    if (input.tagName === 'INPUT') {
+    if (input && input.tagName === 'INPUT' && input.type !== 'checkbox') {
       const display = document.getElementById('val-' + input.id.replace('param-', ''));
       if (display) {
         input.addEventListener('input', () => display.textContent = input.value);
@@ -1333,6 +1562,21 @@
 
   // ---------- Control Sidebar UI Event Listeners ----------
   sidebarToggle.addEventListener('click', toggleSidebar);
+
+  // Helper to bind checkboxes to reveal nested setting panels
+  function bindModeToggle(toggleId, settingsId) {
+    const toggle = document.getElementById(toggleId);
+    const settings = document.getElementById(settingsId);
+    if (toggle && settings) {
+      toggle.addEventListener('change', () => {
+        settings.style.display = toggle.checked ? 'block' : 'none';
+      });
+    }
+  }
+  bindModeToggle('mode-crt-toggle', 'crt-settings');
+  bindModeToggle('mode-kinetic-toggle', 'kinetic-settings');
+  bindModeToggle('mode-particles-toggle', 'particles-settings');
+  bindModeToggle('mode-geometry-toggle', 'geometry-settings');
 
   function toggleSidebar() {
     sidebarToggle.classList.remove('highlight-pulse');
@@ -1782,7 +2026,7 @@
     return count ? (sum / count) : 0;
   }
 
-  // ---------- 3D Ribbed Waveform Core Renderer ----------
+  // ---------- 3D Ribbed Waveform ----------
   function drawRibbedWaveform(time, bass, mid, treble, ampScale) {
     const width = visCanvas.width;
     const height = visCanvas.height;
@@ -1794,6 +2038,19 @@
     const themeShadow = bodyStyle.getPropertyValue('--color-shadow').trim();
     const accentRGB = themeAccent;
 
+    // Camera shake offset calculation
+    if (kineticCurrent > 0.0) {
+      const intensity = kineticCurrent * shakeEnergy * (0.2 + bass * 1.5 + mid * 0.5);
+      shakeOffsetX = (Math.random() - 0.5) * 12 * intensity;
+      shakeOffsetY = (Math.random() - 0.5) * 12 * intensity;
+    } else {
+      shakeOffsetX = 0.0;
+      shakeOffsetY = 0.0;
+    }
+
+    ctx.save();
+    ctx.translate(shakeOffsetX * DPR, shakeOffsetY * DPR);
+
     const countSetting = parseInt(params.discCount.value);
     const spacingSetting = parseInt(params.discSpacing.value) * DPR;
     const widthSetting = parseFloat(params.discWidth.value) * DPR;
@@ -1801,7 +2058,26 @@
     const waveLength = countSetting * spacingSetting;
     const startX = (width - waveLength) / 2 + (spacingSetting / 2);
 
-    // 1. Draw central structural Spindle Rod
+    // 1. Update and Draw swarming particles (back half)
+    const activeParticleCount = parseInt(params.particlesCount.value);
+    const pStyle = params.particlesStyle.value;
+    const pOpacity = particlesCurrent;
+    
+    if (pOpacity > 0.01) {
+      for (let i = 0; i < activeParticleCount; i++) {
+        particles[i].update(width / DPR, height / DPR, bass, mid, treble, time, pStyle, pOpacity);
+      }
+      ctx.save();
+      const accentRGBVal = getRGBChannels(themeAccent);
+      for (let i = 0; i < activeParticleCount; i++) {
+        if (Math.sin(particles[i].angle) < 0) {
+          particles[i].draw(ctx, accentRGBVal, pStyle, DPR);
+        }
+      }
+      ctx.restore();
+    }
+
+    // 2. Draw central structural Spindle Rod
     if (params.spindle.value === 'true') {
       const spindleGrad = ctx.createLinearGradient(startX - 20, midY - 3 * DPR, startX + waveLength + 20, midY + 3 * DPR);
       
@@ -1859,16 +2135,119 @@
     // Render Left Half
     for (let i = 0; i < centerIndex; i++) {
       renderDisc(i, startX + i * spacingSetting, visualAmps[i]);
+      if (i > 0 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
+        drawWireframeConnections(i - 1, i);
+      }
     }
     // Render Right Half (drawn backwards to center)
     for (let i = countSetting - 1; i >= centerIndex; i--) {
       renderDisc(i, startX + i * spacingSetting, visualAmps[i]);
+      if (i < countSetting - 1 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
+        drawWireframeConnections(i, i + 1);
+      }
+    }
+
+    // 3. Draw swarming particles (front half)
+    if (pOpacity > 0.01) {
+      ctx.save();
+      const accentRGBVal = getRGBChannels(themeAccent);
+      for (let i = 0; i < activeParticleCount; i++) {
+        if (Math.sin(particles[i].angle) >= 0) {
+          particles[i].draw(ctx, accentRGBVal, pStyle, DPR);
+        }
+      }
+      ctx.restore();
+    }
+
+    // Restore shake translate context
+    ctx.restore();
+
+    // Wireframe connection lines drawer
+    function drawWireframeConnections(idx1, idx2) {
+      const x1 = startX + idx1 * spacingSetting;
+      const x2 = startX + idx2 * spacingSetting;
+      
+      const amp1 = visualAmps[idx1];
+      const amp2 = visualAmps[idx2];
+      
+      const ry1 = (10 * DPR) + (amp1 * 200 * DPR);
+      const ry2 = (10 * DPR) + (amp2 * 200 * DPR);
+      const rx = widthSetting;
+      
+      ctx.strokeStyle = `rgba(${getRGBChannels(themeAccent)}, ${0.15 * geometryCurrent})`;
+      ctx.lineWidth = 0.5 * DPR;
+      
+      const linesCount = 6;
+      for (let l = 0; l < linesCount; l++) {
+        const angle = (l / linesCount) * Math.PI * 2;
+        const cosA = Math.cos(angle);
+        const sinA = Math.sin(angle);
+        
+        const cy1 = midY + sinA * ry1;
+        const cx1 = x1 + cosA * rx * 0.15;
+        
+        const cy2 = midY + sinA * ry2;
+        const cx2 = x2 + cosA * rx * 0.15;
+        
+        ctx.beginPath();
+        ctx.moveTo(cx1, cy1);
+        ctx.lineTo(cx2, cy2);
+        ctx.stroke();
+      }
+    }
+
+    // Geometric shape morphing path builder
+    function drawMorphedPath(ctx, cx, cy, rx, ry, morphFactor, geomType, index, time) {
+      ctx.beginPath();
+      const steps = 36;
+      
+      let rot = 0;
+      if (geomType === 'segmented') {
+        rot = time * 0.8 * (index % 2 === 0 ? 1 : -1) + index * 0.4;
+      }
+      
+      for (let i = 0; i <= steps; i++) {
+        const a = (i / steps) * Math.PI * 2;
+        const cosA = Math.cos(a + rot);
+        const sinA = Math.sin(a + rot);
+        
+        const ex = cx + cosA * rx;
+        const ey = cy + sinA * ry;
+        
+        let tx = ex;
+        let ty = ey;
+        
+        if (geomType === 'hexagon') {
+          const rawSegment = Math.floor(a / (Math.PI / 3));
+          const k = rawSegment % 6;
+          
+          const a1 = k * (Math.PI / 3);
+          const a2 = (k + 1) * (Math.PI / 3);
+          
+          const vx1 = cx + Math.cos(a1) * rx;
+          const vy1 = cy + Math.sin(a1) * ry;
+          const vx2 = cx + Math.cos(a2) * rx;
+          const vy2 = cy + Math.sin(a2) * ry;
+          
+          const segmentAngleSpan = Math.PI / 3;
+          const angleInSegment = a - rawSegment * segmentAngleSpan;
+          const t = angleInSegment / segmentAngleSpan;
+          
+          tx = vx1 + (vx2 - vx1) * t;
+          ty = vy1 + (vy2 - vy1) * t;
+        }
+        
+        const finalX = ex + (tx - ex) * morphFactor;
+        const finalY = ey + (ty - ey) * morphFactor;
+        
+        if (i === 0) ctx.moveTo(finalX, finalY);
+        else ctx.lineTo(finalX, finalY);
+      }
     }
 
     // Individual Disc Drawing Function
     function renderDisc(index, x, amp) {
       const rx = widthSetting;
-      // Base minimum size so discs are always flat circles even without sound
       const ry = (10 * DPR) + (amp * 200 * DPR);
       
       let discColor = themeAccent;
@@ -1898,42 +2277,55 @@
         }
       }
 
+      const geomType = params.geometryType.value;
+      const isAltGeom = geometryCurrent > 0.01;
+      const accentRGBVal = getRGBChannels(discColor);
+      
       // Draw Shadow Element
       if (shadowType !== 'none') {
+        const shadowAlphaScale = (isAltGeom && geomType === 'wireframe') ? (1.0 - geometryCurrent * 0.7) : 1.0;
+        
         if (shadowType === 'soft') {
           // Beautiful multi-layered vector shadows for soft look with 0% compositing lag!
-          ctx.fillStyle = 'rgba(0,0,0,0.15)';
+          ctx.fillStyle = `rgba(0,0,0,${0.15 * shadowAlphaScale})`;
           ctx.beginPath();
-          ctx.ellipse(x + 5 * DPR, midY + 6 * DPR, rx * 1.15, ry + 2 * DPR, 0, 0, Math.PI * 2);
+          drawMorphedPath(ctx, x + 5 * DPR, midY + 6 * DPR, rx * 1.15, ry + 2 * DPR, geometryCurrent, geomType, index, time);
           ctx.fill();
           
-          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          ctx.fillStyle = `rgba(0,0,0,${0.35 * shadowAlphaScale})`;
           ctx.beginPath();
-          ctx.ellipse(x + 2 * DPR, midY + 3 * DPR, rx * 1.05, ry + 1 * DPR, 0, 0, Math.PI * 2);
+          drawMorphedPath(ctx, x + 2 * DPR, midY + 3 * DPR, rx * 1.05, ry + 1 * DPR, geometryCurrent, geomType, index, time);
           ctx.fill();
         } else {
-          ctx.fillStyle = 'rgba(0,0,0,0.85)';
+          ctx.fillStyle = `rgba(0,0,0,${0.85 * shadowAlphaScale})`;
           ctx.beginPath();
-          ctx.ellipse(x + 3 * DPR, midY + 4 * DPR, rx, ry, 0, 0, Math.PI * 2);
+          drawMorphedPath(ctx, x + 3 * DPR, midY + 4 * DPR, rx, ry, geometryCurrent, geomType, index, time);
           ctx.fill();
         }
       }
 
       // Main Disc Body 3D Gradient Filling
-      const grad = ctx.createLinearGradient(x - rx, midY - ry, x + rx / 2, midY + ry / 2);
-      grad.addColorStop(0, '#ffffff'); // Glinting top-left highlight edge
-      grad.addColorStop(0.2, discColor); // Primary color
-      grad.addColorStop(0.7, shadowColor); // Shadow falloff
-      grad.addColorStop(1, '#000000'); // Ambient occlusion edge
+      const grad = ctx.createLinearGradient(x - rx, midY - ry, x + rx * 0.5, midY + ry * 0.5);
+      const fillOpacity = (isAltGeom && geomType === 'wireframe') ? (1.0 - geometryCurrent * 0.82) : 1.0;
+      const shadowRGBVal = getRGBChannels(shadowColor);
+      
+      grad.addColorStop(0, `rgba(${accentRGBVal}, ${fillOpacity})`);
+      grad.addColorStop(0.35, `rgba(255,255,255, ${fillOpacity})`);
+      grad.addColorStop(0.6, `rgba(${accentRGBVal}, ${fillOpacity})`);
+      grad.addColorStop(1, `rgba(${shadowRGBVal}, ${fillOpacity})`);
       
       ctx.fillStyle = grad;
       ctx.beginPath();
-      ctx.ellipse(x, midY, rx, ry, 0, 0, Math.PI * 2);
+      drawMorphedPath(ctx, x, midY, rx, ry, geometryCurrent, geomType, index, time);
       ctx.fill();
 
-      // Inner grooves (stacked rib effects)
-      if (ribDensity !== 'none') {
-        let step = 3;
+      // Draw concentric grooves (skipped in wireframe/segmented to keep structure clean)
+      const skipGrooves = isAltGeom && (geomType === 'wireframe' || geomType === 'segmented');
+      
+      if (!skipGrooves) {
+        const grooveOpacity = isAltGeom && geomType === 'hexagon' ? (1.0 - geometryCurrent * 0.5) : 1.0;
+        
+        let step = 3.5;
         if (ribDensity === 'low') step = 5;
         if (ribDensity === 'high') step = 2.0;
 
@@ -1943,25 +2335,43 @@
           const irx = rx - offset;
           const iry = ry * ratio;
           
-          // Shaded back groove (dark stroke)
-          ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+          ctx.strokeStyle = `rgba(0,0,0,${0.22 * grooveOpacity})`;
           ctx.beginPath();
-          ctx.ellipse(x, midY, irx, iry, 0, -Math.PI * 0.2, Math.PI * 0.8);
+          drawMorphedPath(ctx, x, midY, irx, iry, geometryCurrent, geomType, index, time);
           ctx.stroke();
 
-          // Highlighted front groove (soft white/accent glint)
-          ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+          ctx.strokeStyle = `rgba(255,255,255,${0.09 * grooveOpacity})`;
           ctx.beginPath();
-          ctx.ellipse(x, midY, irx, iry, 0, Math.PI * 0.8, -Math.PI * 0.2);
+          drawMorphedPath(ctx, x, midY, irx, iry, geometryCurrent, geomType, index, time);
           ctx.stroke();
         }
       }
       
+      // Draw Concentric Segmented Rings if active
+      if (isAltGeom && geomType === 'segmented') {
+        const segs = 3;
+        const span = (Math.PI * 2) / segs;
+        const arcLen = span * 0.65;
+        const rot = time * 0.8 * (index % 2 === 0 ? 1 : -1) + index * 0.4;
+        
+        ctx.lineWidth = 1.0 * DPR;
+        ctx.strokeStyle = `rgba(${accentRGBVal}, ${geometryCurrent})`;
+        
+        for (let s = 0; s < segs; s++) {
+          const startA = rot + s * span;
+          const endA = startA + arcLen;
+          ctx.beginPath();
+          ctx.ellipse(x, midY, rx, ry, 0, startA, endA);
+          ctx.stroke();
+        }
+      }
+
       // Fine outer silhouette stroke to hold vector structure crisp
-      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      const strokeOpacity = (isAltGeom && geomType === 'segmented') ? (1.0 - geometryCurrent) : 1.0;
+      ctx.strokeStyle = `rgba(0,0,0,${0.45 * strokeOpacity})`;
       ctx.lineWidth = 0.5 * DPR;
       ctx.beginPath();
-      ctx.ellipse(x, midY, rx, ry, 0, 0, Math.PI * 2);
+      drawMorphedPath(ctx, x, midY, rx, ry, geometryCurrent, geomType, index, time);
       ctx.stroke();
     }
   }
@@ -2020,6 +2430,30 @@
   function renderFrame(nowMs) {
     requestAnimationFrame(renderFrame);
     
+    // Update LERP target/current states for Section 5 modes
+    const isCrt = document.getElementById('mode-crt-toggle').checked;
+    crtWarpTarget = isCrt ? parseFloat(params.crtWarp.value) : 0.0;
+    crtPhosphorTarget = (isCrt && params.crtPhosphor.checked) ? 1.0 : 0.0;
+    
+    const isKinetic = document.getElementById('mode-kinetic-toggle').checked;
+    kineticTarget = isKinetic ? parseFloat(params.kineticShake.value) : 0.0;
+    
+    const isParticles = document.getElementById('mode-particles-toggle').checked;
+    particlesTarget = isParticles ? 1.0 : 0.0;
+    
+    const isGeometry = document.getElementById('mode-geometry-toggle').checked;
+    geometryTarget = isGeometry ? 1.0 : 0.0;
+    
+    // Smooth LERP updates
+    crtWarpCurrent += (crtWarpTarget - crtWarpCurrent) * 0.1;
+    crtPhosphorCurrent += (crtPhosphorTarget - crtPhosphorCurrent) * 0.1;
+    kineticCurrent += (kineticTarget - kineticCurrent) * 0.1;
+    particlesCurrent += (particlesTarget - particlesCurrent) * 0.08;
+    geometryCurrent += (geometryTarget - geometryCurrent) * 0.1;
+    
+    // Decay shake energy smoothly
+    shakeEnergy *= 0.92;
+
     const time = nowMs / 1000;
     const delta = time - lastTimeVal;
     lastTimeVal = time;
@@ -2040,10 +2474,17 @@
       mid = getAvgRange(freqData, 8, 38) / 255.0;
       treble = getAvgRange(freqData, 38, 120) / 255.0;
       
+      // Dynamic beat kick detection to trigger camera shake
+      if (bass - lastBass > 0.18) {
+        shakeEnergy = 1.0;
+      }
+      lastBass = bass;
+
       // Simulate live system metrics
       randomDeviation = (bass * 4.8 + Math.sin(time * 8.0) * 0.4).toFixed(2);
       hypnosisFactor = Math.min(100.0, (hypnosisFactor * 0.97 + bass * 6.5)).toFixed(1);
     } else {
+      lastBass = 0.0;
       // Idle system metrics fluctuations
       randomDeviation = (Math.sin(time * 0.5) * 0.15 + 0.1).toFixed(2);
       hypnosisFactor = (Math.abs(Math.sin(time * 0.2)) * 4.0).toFixed(1);
@@ -2072,6 +2513,8 @@
       gl.uniform1f(gl.getUniformLocation(glProgram, 'u_vortex_intensity'), parseFloat(params.vortexInt.value));
       gl.uniform1f(gl.getUniformLocation(glProgram, 'u_vortex_freq'), parseFloat(params.vortexFreq.value));
       gl.uniform1f(gl.getUniformLocation(glProgram, 'u_vortex_speed'), parseFloat(params.vortexSpeed.value));
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_crt_warp'), crtWarpCurrent);
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_crt_phosphor'), crtPhosphorCurrent);
       // Pass physical pixels resolution (w * DPR, h * DPR) so fragment shaders (scanlines/vortex) are 4K-sharp!
       gl.uniform2f(gl.getUniformLocation(glProgram, 'u_resolution'), w * DPR, h * DPR);
       
@@ -2107,6 +2550,9 @@
         
         if (activeIndex !== currentWordIndex) {
           currentWordIndex = activeIndex;
+          
+          // Trigger shake impact on word onset (beat peak)
+          shakeEnergy = 1.0;
           
           // Apply active word subtitle
           if (params.subtitleMode.value === 'bottom') {
