@@ -699,7 +699,6 @@
 <!-- Top and Bottom HUD Elements -->
 <div class="hud-container">
   <div class="hud-top">
-    <div class="brand">STRATRA</div>
     <div class="hud-readout">
       <div><b>DEVIATION:</b> <span id="hud-deviation">0.00%</span></div>
       <div><b>HYPNOSIS:</b> <span id="hud-hypnosis">0.0%</span></div>
@@ -2366,23 +2365,19 @@
       ctx.shadowColor = 'rgba(0,0,0,0.7)';
       ctx.shadowBlur = 6 * DPR;
       
-      // Traverse all discs and build the bent spindle line path!
+      // Traverse all discs and build the bent spindle line path using spring-physics positions
       const discsPerLetter = Math.floor(countSetting / 7);
       for (let i = 0; i < countSetting; i++) {
-        const targetX = startX + i * spacingSetting;
-        const targetY = midY;
+        // Use the live spring-physics position so the rod perfectly follows the discs
+        const px = (discCx[i] < -8000) ? (startX + i * spacingSetting) : discCx[i];
+        const py = (discCy[i] < -8000) ? midY : discCy[i];
         
-        const pts = getSpindleBrandCoords(i);
-        const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
-        const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
-        
-        const proj = get3DProjection(discX, discY, i);
         const isStartOfLetter = (i % discsPerLetter === 0);
         
         if (i === 0 || (isStartOfLetter && idleBrandCurrent > 0.01)) {
-          ctx.moveTo(proj.x, proj.y);
+          ctx.moveTo(px, py);
         } else {
-          ctx.lineTo(proj.x, proj.y);
+          ctx.lineTo(px, py);
         }
       }
       ctx.stroke();
