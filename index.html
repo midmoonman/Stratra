@@ -68,6 +68,53 @@
     --line-soft: rgba(0, 255, 213, 0.06);
   }
 
+  /* ── LIGHT MODE ── */
+  body.light-mode {
+    --bg-void: #f0ede8;
+    --bg-abyss: #ffffff;
+    --color-accent: #1a1a2e;
+    --color-accent-rgb: 26, 26, 46;
+    --color-shadow: #d4cfc8;
+    --line: rgba(26, 26, 46, 0.15);
+    --line-soft: rgba(26, 26, 46, 0.07);
+  }
+  body.light-mode.theme-monochrome {
+    --bg-void: #f2f0eb;
+    --bg-abyss: #ffffff;
+    --color-accent: #1a1a1a;
+    --color-accent-rgb: 26, 26, 26;
+    --color-shadow: #c8c4be;
+    --line: rgba(26,26,26,0.14);
+    --line-soft: rgba(26,26,26,0.06);
+  }
+  body.light-mode.theme-crimson {
+    --bg-void: #fff0f0;
+    --bg-abyss: #ffffff;
+    --color-accent: #c0001a;
+    --color-accent-rgb: 192, 0, 26;
+    --color-shadow: #f0cccc;
+    --line: rgba(192,0,26,0.15);
+    --line-soft: rgba(192,0,26,0.06);
+  }
+  body.light-mode.theme-toxic {
+    --bg-void: #f0fff4;
+    --bg-abyss: #ffffff;
+    --color-accent: #1a6e00;
+    --color-accent-rgb: 26, 110, 0;
+    --color-shadow: #c2e8c0;
+    --line: rgba(26,110,0,0.15);
+    --line-soft: rgba(26,110,0,0.06);
+  }
+  body.light-mode.theme-abyssal {
+    --bg-void: #e8f8f6;
+    --bg-abyss: #ffffff;
+    --color-accent: #00706a;
+    --color-accent-rgb: 0, 112, 106;
+    --color-shadow: #b8e0de;
+    --line: rgba(0,112,106,0.15);
+    --line-soft: rgba(0,112,106,0.06);
+  }
+
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0; height: 100%;
@@ -683,6 +730,72 @@
     text-shadow: 0 0 15px rgba(var(--color-accent-rgb), 0.5);
     text-transform: uppercase;
   }
+  /* Light/Dark mode toggle button */
+  .theme-toggle-btn {
+    position: fixed;
+    top: 22px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 200;
+    background: var(--bg-abyss);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 5px 14px 5px 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    font-family: var(--font-header);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
+    transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+    user-select: none;
+    pointer-events: all;
+  }
+  .theme-toggle-btn:hover {
+    box-shadow: 0 6px 24px rgba(0,0,0,0.26);
+    border-color: var(--color-accent);
+  }
+  .theme-toggle-track {
+    width: 32px;
+    height: 18px;
+    background: var(--line-soft);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    position: relative;
+    transition: background 0.3s ease;
+    flex-shrink: 0;
+  }
+  .theme-toggle-btn.light-active .theme-toggle-track {
+    background: rgba(var(--color-accent-rgb), 0.2);
+  }
+  .theme-toggle-knob {
+    position: absolute;
+    top: 1px;
+    left: 1px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--color-accent);
+    transition: transform 0.28s cubic-bezier(0.34,1.56,0.64,1), background 0.28s ease;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+  }
+  .theme-toggle-btn.light-active .theme-toggle-knob {
+    transform: translateX(14px);
+  }
+  .theme-toggle-icon {
+    font-size: 13px;
+    line-height: 1;
+    transition: transform 0.4s ease;
+  }
+  .theme-toggle-btn.light-active .theme-toggle-icon {
+    transform: rotate(20deg);
+  }
+  .theme-toggle-label { opacity: 0.8; }
 </style>
 </head>
 <body class="theme-monochrome">
@@ -695,6 +808,15 @@
 <!-- Dual Canvas Backdrop -->
 <canvas id="gl-canvas"></canvas>
 <canvas id="visualizer-canvas"></canvas>
+
+<!-- Light / Dark Mode Toggle -->
+<button class="theme-toggle-btn" id="themeToggleBtn" aria-label="Toggle light/dark mode">
+  <span class="theme-toggle-icon" id="themeToggleIcon">🌙</span>
+  <div class="theme-toggle-track">
+    <div class="theme-toggle-knob"></div>
+  </div>
+  <span class="theme-toggle-label" id="themeToggleLabel">Dark</span>
+</button>
 
 <!-- Top and Bottom HUD Elements -->
 <div class="hud-container">
@@ -1776,8 +1898,40 @@
   }
 
   themeSelect.addEventListener('change', () => {
+    const isLight = document.body.classList.contains('light-mode');
     document.body.className = '';
     document.body.classList.add(themeSelect.value);
+    if (isLight) document.body.classList.add('light-mode');
+  });
+
+  // ── Light / Dark Mode Toggle ──
+  const themeToggleBtn  = document.getElementById('themeToggleBtn');
+  const themeToggleIcon = document.getElementById('themeToggleIcon');
+  const themeToggleLabel = document.getElementById('themeToggleLabel');
+
+  function setLightMode(on) {
+    if (on) {
+      document.body.classList.add('light-mode');
+      themeToggleBtn.classList.add('light-active');
+      themeToggleIcon.textContent = '☀️';
+      themeToggleLabel.textContent = 'Light';
+      localStorage.setItem('stratra-light-mode', '1');
+    } else {
+      document.body.classList.remove('light-mode');
+      themeToggleBtn.classList.remove('light-active');
+      themeToggleIcon.textContent = '🌙';
+      themeToggleLabel.textContent = 'Dark';
+      localStorage.setItem('stratra-light-mode', '0');
+    }
+  }
+
+  // Restore from localStorage on load
+  if (localStorage.getItem('stratra-light-mode') === '1') {
+    setLightMode(true);
+  }
+
+  themeToggleBtn.addEventListener('click', () => {
+    setLightMode(!document.body.classList.contains('light-mode'));
   });
 
   bgSourceSelect.addEventListener('change', () => {
@@ -2877,7 +3031,13 @@
 
     // 1. Draw WebGL Background
     if (gl) {
-      gl.clearColor(0.02, 0.02, 0.04, 1.0);
+      // Dynamic clear color: warm cream in light mode, deep void in dark mode
+      const isLightNow = document.body.classList.contains('light-mode');
+      if (isLightNow) {
+        gl.clearColor(0.945, 0.929, 0.910, 1.0); // #f2ede8 warm cream
+      } else {
+        gl.clearColor(0.02, 0.02, 0.04, 1.0);
+      }
       gl.clear(gl.COLOR_BUFFER_BIT);
       
       // Bind relevant source texture
