@@ -1243,6 +1243,13 @@
       
       // Flash live feed status
       flashLiveIndicator();
+
+      // Automatically start playback immediately upon file select
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      startPlayback(0);
+      liveText.textContent = 'LIVE FEED LINK';
     } catch(err) {
       console.error(err);
       idlePrompt.textContent = '[ Connection Failed: Corrupt Audio ]';
@@ -1516,8 +1523,15 @@
     return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
   }
 
-  // Keyboard Shortcuts ('H' for recording view, 'Space' for play/pause)
+  // Keyboard Shortcuts ('Ctrl+O' for opening audio, 'H' for recording view, 'Space' for play/pause)
   window.addEventListener('keydown', (e) => {
+    // Global Ctrl+O / Cmd+O to open file dialog
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'o') {
+      e.preventDefault();
+      audioInput.click();
+      return;
+    }
+
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
     
     if (e.key.toLowerCase() === 'h') {
