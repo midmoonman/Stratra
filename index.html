@@ -744,75 +744,31 @@
     text-shadow: 0 0 15px rgba(var(--color-accent-rgb), 0.5);
     text-transform: uppercase;
   }
-  
-  /* Switch / Toggle slider style for control menu */
-  .toggle-switch {
-    position: relative;
-    display: inline-block;
-    width: 36px;
-    height: 20px;
-  }
-  .toggle-switch input {
-    opacity: 0;
-    width: 0;
-    height: 0;
-  }
-  .toggle-switch .slider {
-    position: absolute;
-    cursor: pointer;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background-color: var(--line-soft);
-    border: 1px solid var(--line);
-    transition: .3s;
-    border-radius: 20px;
-  }
-  .toggle-switch .slider:before {
-    position: absolute;
-    content: "";
-    height: 12px;
-    width: 12px;
-    left: 3px;
-    bottom: 3px;
-    background-color: var(--color-accent);
-    transition: .3s cubic-bezier(0.34, 1.56, 0.64, 1);
-    border-radius: 50%;
-  }
-  .toggle-switch input:checked + .slider {
-    background-color: rgba(var(--color-accent-rgb), 0.2);
-    border-color: var(--color-accent);
-  }
-  .toggle-switch input:checked + .slider:before {
-    transform: translateX(16px);
-  }
-
   /* Light/Dark mode toggle button */
   .theme-toggle-btn {
-    position: fixed;
-    top: 22px;
-    left: 50%;
-    transform: translateX(-50%);
-    z-index: 200;
-    background: var(--bg-abyss);
+    /* Inline within HUD — no fixed positioning */
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: rgba(var(--color-accent-rgb), 0.08);
     border: 1px solid var(--line);
     border-radius: 999px;
-    padding: 5px 14px 5px 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    padding: 4px 10px 4px 6px;
     cursor: pointer;
-    font-family: var(--font-header);
-    font-size: 10px;
+    font-family: var(--font-mono);
+    font-size: 9px;
     font-weight: 600;
-    letter-spacing: 0.1em;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--color-accent);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.18);
-    transition: background 0.35s ease, color 0.35s ease, border-color 0.35s ease, box-shadow 0.35s ease;
+    transition: background 0.3s ease, border-color 0.25s ease;
     user-select: none;
     pointer-events: all;
+    margin-bottom: 6px;
+    width: fit-content;
   }
   .theme-toggle-btn:hover {
-    box-shadow: 0 6px 24px rgba(0,0,0,0.26);
+    background: rgba(var(--color-accent-rgb), 0.16);
     border-color: var(--color-accent);
   }
   .theme-toggle-track {
@@ -864,14 +820,6 @@
 <canvas id="gl-canvas"></canvas>
 <canvas id="visualizer-canvas"></canvas>
 
-<!-- Light / Dark Mode Toggle -->
-<button class="theme-toggle-btn" id="themeToggleBtn" aria-label="Toggle light/dark mode">
-  <span class="theme-toggle-icon" id="themeToggleIcon">🌙</span>
-  <div class="theme-toggle-track">
-    <div class="theme-toggle-knob"></div>
-  </div>
-  <span class="theme-toggle-label" id="themeToggleLabel">Dark</span>
-</button>
 
 <!-- Top and Bottom HUD Elements -->
 <div class="hud-container">
@@ -883,6 +831,12 @@
   </div>
   <div class="hud-bottom">
     <div class="hud-status-group">
+      <!-- Light / Dark Mode Toggle -->
+      <button class="theme-toggle-btn" id="themeToggleBtn" aria-label="Toggle light/dark mode">
+        <span class="theme-toggle-icon" id="themeToggleIcon">🌙</span>
+        <div class="theme-toggle-track"><div class="theme-toggle-knob"></div></div>
+        <span class="theme-toggle-label" id="themeToggleLabel">Dark</span>
+      </button>
       <div class="hud-live-tag"><div class="pulse-dot"></div> <span id="live-text">LINK PENDING</span></div>
       <div style="font-size: 9px; opacity: 0.65; margin-top: 4px;">Uptime: <span id="hud-uptime">00:00:00</span></div>
     </div>
@@ -1000,14 +954,6 @@
     <!-- SECTION 3: Visualizer Customization -->
     <div class="settings-section">
       <h3>3. 3D Waveform Aesthetics</h3>
-
-      <div class="control-group" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <label style="margin: 0; font-size: 10px; color: rgba(var(--color-accent-rgb), 0.7); letter-spacing: 0.05em; text-transform: uppercase;">Light Theme Mode</label>
-        <label class="toggle-switch">
-          <input type="checkbox" id="sidebarThemeToggle">
-          <span class="slider"></span>
-        </label>
-      </div>
 
       <div class="control-group select-group">
         <label>Color Theme Palette</label>
@@ -1971,7 +1917,6 @@
   const themeToggleBtn  = document.getElementById('themeToggleBtn');
   const themeToggleIcon = document.getElementById('themeToggleIcon');
   const themeToggleLabel = document.getElementById('themeToggleLabel');
-  const sidebarThemeToggle = document.getElementById('sidebarThemeToggle');
 
   function setLightMode(on) {
     if (on) {
@@ -1980,14 +1925,12 @@
       themeToggleIcon.textContent = '☀️';
       themeToggleLabel.textContent = 'Light';
       localStorage.setItem('stratra-light-mode', '1');
-      if (sidebarThemeToggle) sidebarThemeToggle.checked = true;
     } else {
       document.body.classList.remove('light-mode');
       themeToggleBtn.classList.remove('light-active');
       themeToggleIcon.textContent = '🌙';
       themeToggleLabel.textContent = 'Dark';
       localStorage.setItem('stratra-light-mode', '0');
-      if (sidebarThemeToggle) sidebarThemeToggle.checked = false;
     }
   }
 
@@ -1999,12 +1942,6 @@
   themeToggleBtn.addEventListener('click', () => {
     setLightMode(!document.body.classList.contains('light-mode'));
   });
-
-  if (sidebarThemeToggle) {
-    sidebarThemeToggle.addEventListener('change', () => {
-      setLightMode(sidebarThemeToggle.checked);
-    });
-  }
 
   bgSourceSelect.addEventListener('change', () => {
     const src = bgSourceSelect.value;
@@ -3174,7 +3111,16 @@
         } else {
           subtitleText.textContent = '';
         }
-
+      } else {
+        // No transcript — show only elapsed / total time (no filename)
+        if (params.subtitleMode.value === 'bottom') {
+          const elapsed = fmtTime(Math.max(0, audioTime));
+          const total = fmtTime(audioBuffer.duration);
+          subtitleText.textContent = `${elapsed}  /  ${total}`;
+          subtitleText.style.opacity = '0.6';
+          subtitleText.style.fontSize = '13px';
+        }
+      }
 
       // Update HUD scrub bar and time
       hudWordIndex.textContent = schedule.length ? (schedule.findIndex(s => s.word === activeWord) + 1 || '—') : '—';
