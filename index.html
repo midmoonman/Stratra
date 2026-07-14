@@ -581,17 +581,60 @@
   .scrub-container {
     position: fixed;
     left: 0; right: 0; bottom: 0;
-    height: 4px;
-    background: rgba(var(--color-accent-rgb), 0.05);
-    z-index: 10;
+    height: 6px;
+    background: rgba(var(--color-accent-rgb), 0.08);
+    z-index: 1000;
     cursor: pointer;
+    transition: height 0.15s ease;
+  }
+  .scrub-container:hover {
+    height: 12px;
   }
   .scrub-fill {
+    position: relative;
     height: 100%;
     background: var(--color-accent);
     width: 0%;
-    box-shadow: 0 0 6px var(--color-accent);
-    transition: width 0.1s linear;
+    box-shadow: 0 0 8px var(--color-accent);
+  }
+  /* The Spotify Handle Dot */
+  .scrub-handle {
+    position: absolute;
+    right: -6px;
+    top: 50%;
+    transform: translateY(-50%) scale(0);
+    width: 12px;
+    height: 12px;
+    background: #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(0, 0, 0, 0.5), 0 0 4px var(--color-accent);
+    transition: transform 0.15s ease;
+    pointer-events: none;
+  }
+  .scrub-container:hover .scrub-handle {
+    transform: translateY(-50%) scale(1);
+  }
+  /* Floating Time Tooltip */
+  .scrub-tooltip {
+    position: absolute;
+    bottom: 18px;
+    left: 0;
+    transform: translateX(-50%) scale(0);
+    background: var(--bg-abyss);
+    border: 1px solid var(--color-accent);
+    color: var(--color-accent);
+    font-family: 'Poppins', sans-serif;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 3px 6px;
+    border-radius: 4px;
+    pointer-events: none;
+    transition: transform 0.12s ease, left 0.05s linear;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+    z-index: 1001;
+  }
+  .scrub-container:hover .scrub-tooltip {
+    transform: translateX(-50%) scale(1);
   }
 
   .ambient-idle-msg {
@@ -683,7 +726,10 @@
 
 <!-- Progress Scrub Bar -->
 <div class="scrub-container" id="scrubContainer">
-  <div class="scrub-fill" id="scrubFill"></div>
+  <div class="scrub-fill" id="scrubFill">
+    <div class="scrub-handle" id="scrubHandle"></div>
+  </div>
+  <div class="scrub-tooltip" id="scrubTooltip">00:00</div>
 </div>
 
 <div class="ambient-idle-msg" id="idlePrompt"></div>
@@ -1964,21 +2010,64 @@
     flashLiveIndicator();
   });
 
-  // Scrub bar interaction
-  scrubContainer.addEventListener('click', (e) => {
+  // Scrub bar interaction: Spotify-style drag-to-scrub with hover tooltips
+  let isDraggingScrub = false;
+  const scrubHandle = document.getElementById('scrubHandle');
+  const scrubTooltip = document.getElementById('scrubTooltip');
+
+  // Hover tooltip tracking
+  scrubContainer.addEventListener('mousemove', (e) => {
     if (!audioBuffer) return;
     const rect = scrubContainer.getBoundingClientRect();
-    const percent = (e.clientX - rect.left) / rect.width;
+    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const hoverTime = percent * audioBuffer.duration;
+    
+    // Position tooltip
+    scrubTooltip.style.left = (percent * 100) + '%';
+    scrubTooltip.textContent = fmtTime(hoverTime);
+  });
+
+  // Drag & Scrub seek logic
+  scrubContainer.addEventListener('mousedown', (e) => {
+    if (!audioBuffer) return;
+    isDraggingScrub = true;
+    updateScrubFromEvent(e);
+  });
+
+  window.addEventListener('mousemove', (e) => {
+    if (!isDraggingScrub || !audioBuffer) return;
+    updateScrubFromEvent(e);
+  });
+
+  window.addEventListener('mouseup', (e) => {
+    if (!isDraggingScrub || !audioBuffer) return;
+    isDraggingScrub = false;
+    
+    // Calculate final seek position
+    const rect = scrubContainer.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
     const seekTime = percent * audioBuffer.duration;
     
     if (playing) {
       startPlayback(seekTime);
     } else {
       pausedOffset = seekTime;
-      scrubFill.style.width = (percent * 100) + '%';
-      hudTime.textContent = fmtTime(seekTime) + ' / ' + fmtTime(audioBuffer.duration);
     }
   });
+
+  function updateScrubFromEvent(e) {
+    const rect = scrubContainer.getBoundingClientRect();
+    const percent = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const scrubTime = percent * audioBuffer.duration;
+    
+    // Update UI indicators instantly during drag (without audio nodes restarts)
+    scrubFill.style.width = (percent * 100) + '%';
+    hudTime.textContent = fmtTime(scrubTime) + ' / ' + fmtTime(audioBuffer.duration);
+    
+    // If dragging, make sure tooltip aligns
+    scrubTooltip.style.left = (percent * 100) + '%';
+    scrubTooltip.textContent = fmtTime(scrubTime);
+  }
 
   function fmtTime(s) {
     if (!isFinite(s) || s < 0) s = 0;
@@ -2571,8 +2660,10 @@
 
       // Draw word index counters
       hudWordIndex.textContent = activeIndex >= 0 ? (activeIndex + 1) : '—';
-      hudTime.textContent = fmtTime(audioTime) + ' / ' + fmtTime(audioBuffer.duration);
-      scrubFill.style.width = Math.min(100, (audioTime / audioBuffer.duration) * 100) + '%';
+      if (!isDraggingScrub) {
+        hudTime.textContent = fmtTime(audioTime) + ' / ' + fmtTime(audioBuffer.duration);
+        scrubFill.style.width = Math.min(100, (audioTime / audioBuffer.duration) * 100) + '%';
+      }
     } else {
       hudWordIndex.textContent = '—';
       subtitleText.textContent = '';
