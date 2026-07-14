@@ -559,9 +559,7 @@
   <div class="scrub-fill" id="scrubFill"></div>
 </div>
 
-<div class="ambient-idle-msg" id="idlePrompt">
-  [ LINK OFFLINE ]
-</div>
+<div class="ambient-idle-msg" id="idlePrompt"></div>
 
 <!-- Control Panel Sidebar -->
 <div class="control-sidebar closed" id="sidebar">
@@ -669,6 +667,15 @@
         <select id="adaptiveColorSelect">
           <option value="false">Static Theme Accent Color</option>
           <option value="true">Sample Background Colors (Compiled)</option>
+        </select>
+      </div>
+
+      <div class="control-group select-group">
+        <label>Render Canvas Quality</label>
+        <select id="renderQualitySelect">
+          <option value="1">Standard (1x)</option>
+          <option value="1.5">HD Clear (1.5x)</option>
+          <option value="2" selected>4K Ultra Crisp (2x Supersampled)</option>
         </select>
       </div>
 
@@ -893,16 +900,21 @@
   const hudTotalWords = document.getElementById('hud-total-words');
   const hudTime = document.getElementById('hud-time');
 
-  // Device Pixel Ratio Handling
-  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  // Device Pixel Ratio Handling (mutable for dynamic quality changes)
+  let DPR = window.devicePixelRatio || 1;
   let w = window.innerWidth, h = window.innerHeight;
 
   function resize() {
     w = window.innerWidth;
     h = window.innerHeight;
     
-    glCanvas.width = w;
-    glCanvas.height = h;
+    // Read the active canvas supersampling quality setting (default to 2 for 4K crispness)
+    const qualitySelect = document.getElementById('renderQualitySelect');
+    const qualityScale = qualitySelect ? parseFloat(qualitySelect.value) : 2;
+    DPR = (window.devicePixelRatio || 1) * qualityScale;
+    
+    glCanvas.width = w * DPR;
+    glCanvas.height = h * DPR;
     glCanvas.style.width = w + 'px';
     glCanvas.style.height = h + 'px';
     
@@ -911,7 +923,7 @@
     visCanvas.style.width = w + 'px';
     visCanvas.style.height = h + 'px';
     
-    if (gl) gl.viewport(0, 0, w, h);
+    if (gl) gl.viewport(0, 0, w * DPR, h * DPR);
     
     // Regenerate current texture if aspect ratio changes
     if (bgSource === 'default') {
@@ -919,6 +931,11 @@
     }
   }
   window.addEventListener('resize', resize);
+  
+  // Recalculate canvas buffers immediately when quality selection changes
+  document.getElementById('renderQualitySelect').addEventListener('change', () => {
+    resize();
+  });
 
   // Audio Variables
   let audioCtx = null;
@@ -1865,7 +1882,8 @@
       gl.uniform1f(gl.getUniformLocation(glProgram, 'u_vortex_intensity'), parseFloat(params.vortexInt.value));
       gl.uniform1f(gl.getUniformLocation(glProgram, 'u_vortex_freq'), parseFloat(params.vortexFreq.value));
       gl.uniform1f(gl.getUniformLocation(glProgram, 'u_vortex_speed'), parseFloat(params.vortexSpeed.value));
-      gl.uniform2f(gl.getUniformLocation(glProgram, 'u_resolution'), w, h);
+      // Pass physical pixels resolution (w * DPR, h * DPR) so fragment shaders (scanlines/vortex) are 4K-sharp!
+      gl.uniform2f(gl.getUniformLocation(glProgram, 'u_resolution'), w * DPR, h * DPR);
       
       gl.drawArrays(gl.TRIANGLES, 0, 6);
     }
