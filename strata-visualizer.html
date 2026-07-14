@@ -1,0 +1,1757 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>STRATA // Horror Audio Visualizer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&family=Creepster&display=swap" rel="stylesheet">
+<style>
+  :root {
+    /* Theme color variables */
+    --bg-void: #050508;
+    --bg-abyss: #0c0c14;
+    --color-accent: #ffffff;
+    --color-accent-rgb: 255, 255, 255;
+    --color-shadow: #202025;
+    --line: rgba(255, 255, 255, 0.12);
+    --line-soft: rgba(255, 255, 255, 0.05);
+    --font-header: 'Space Grotesk', sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+  }
+
+  /* Theme Presets */
+  body.theme-monochrome {
+    --bg-void: #060608;
+    --bg-abyss: #101014;
+    --color-accent: #e5e5e0;
+    --color-accent-rgb: 229, 229, 224;
+    --color-shadow: #202025;
+    --line: rgba(229, 229, 224, 0.12);
+    --line-soft: rgba(229, 229, 224, 0.05);
+  }
+  body.theme-phantasm {
+    --bg-void: #090202;
+    --bg-abyss: #1a0808;
+    --color-accent: #f0e6d2;
+    --color-accent-rgb: 240, 230, 210;
+    --color-shadow: #2e1d18;
+    --line: rgba(240, 230, 210, 0.12);
+    --line-soft: rgba(240, 230, 210, 0.05);
+  }
+  body.theme-crimson {
+    --bg-void: #080000;
+    --bg-abyss: #1c0002;
+    --color-accent: #ff2a2a;
+    --color-accent-rgb: 255, 42, 42;
+    --color-shadow: #3b0000;
+    --line: rgba(255, 42, 42, 0.15);
+    --line-soft: rgba(255, 42, 42, 0.06);
+  }
+  body.theme-toxic {
+    --bg-void: #000803;
+    --bg-abyss: #001c0c;
+    --color-accent: #39ff14;
+    --color-accent-rgb: 57, 255, 20;
+    --color-shadow: #053b0a;
+    --line: rgba(57, 255, 20, 0.15);
+    --line-soft: rgba(57, 255, 20, 0.06);
+  }
+  body.theme-abyssal {
+    --bg-void: #02080d;
+    --bg-abyss: #071724;
+    --color-accent: #00ffd5;
+    --color-accent-rgb: 0, 255, 213;
+    --color-shadow: #02303c;
+    --line: rgba(0, 255, 213, 0.15);
+    --line-soft: rgba(0, 255, 213, 0.06);
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background-color: var(--bg-void);
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+    transition: background-color 0.5s ease, color 0.5s ease;
+  }
+
+  /* Dual canvas setup */
+  #gl-canvas, #visualizer-canvas {
+    position: fixed; inset: 0; display: block;
+    width: 100vw; height: 100vh;
+  }
+  #gl-canvas { z-index: 1; }
+  #visualizer-canvas { z-index: 2; pointer-events: none; }
+
+  /* HUD Layout */
+  .hud-container {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    z-index: 5;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 24px;
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+
+  .hud-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    opacity: 0.8;
+  }
+  .hud-top .brand {
+    font-family: var(--font-header);
+    font-weight: 700;
+    font-size: 16px;
+    letter-spacing: 0.25em;
+    color: var(--color-accent);
+    text-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.3);
+  }
+  .hud-top .brand span {
+    opacity: 0.5;
+  }
+  .hud-readout {
+    text-align: right;
+    line-height: 1.8;
+  }
+  .hud-readout b {
+    color: var(--color-accent);
+    font-weight: 700;
+  }
+
+  .hud-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    opacity: 0.8;
+  }
+  .hud-status-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .hud-live-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(var(--color-accent-rgb), 0.1);
+    border: 1px solid var(--line);
+    padding: 4px 10px;
+    font-weight: 700;
+    color: var(--color-accent);
+  }
+  .hud-live-tag .pulse-dot {
+    width: 6px;
+    height: 6px;
+    background-color: var(--color-accent);
+    border-radius: 50%;
+    animation: pulse 1.2s infinite alternate;
+  }
+
+  @keyframes pulse {
+    0% { opacity: 0.2; transform: scale(0.85); box-shadow: 0 0 0 rgba(var(--color-accent-rgb), 0); }
+    100% { opacity: 1; transform: scale(1.1); box-shadow: 0 0 8px rgba(var(--color-accent-rgb), 0.7); }
+  }
+
+  /* Subtitles / Speech Typewriter */
+  .subtitle-container {
+    position: fixed;
+    bottom: 120px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+    text-align: center;
+    max-width: 600px;
+    width: 90%;
+    pointer-events: none;
+  }
+  .speech-text {
+    font-family: var(--font-header);
+    font-weight: 500;
+    font-size: 20px;
+    color: var(--color-accent);
+    text-shadow: 0 2px 12px rgba(0,0,0,0.8), 0 0 15px rgba(var(--color-accent-rgb), 0.25);
+    letter-spacing: 0.05em;
+    line-height: 1.4;
+  }
+
+  /* Circular Depth Stack Words (Legacy option, drawing dynamically on canvas) */
+
+  /* Sidebar Controls Panel */
+  .control-sidebar {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 380px;
+    background: rgba(var(--bg-abyss), 0.85);
+    border-left: 1px solid var(--line);
+    backdrop-filter: blur(20px);
+    z-index: 100;
+    padding: 24px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: -10px 0 30px rgba(0, 0, 0, 0.5);
+  }
+  .control-sidebar.closed {
+    transform: translateX(100%);
+  }
+  .sidebar-toggle-btn {
+    position: absolute;
+    left: -40px;
+    top: 24px;
+    width: 40px;
+    height: 40px;
+    background: rgba(var(--bg-abyss), 0.85);
+    border: 1px solid var(--line);
+    border-right: none;
+    backdrop-filter: blur(20px);
+    color: var(--color-accent);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: background 0.15s ease;
+  }
+  .sidebar-toggle-btn:hover {
+    background: rgba(var(--color-accent-rgb), 0.08);
+  }
+
+  .sidebar-header {
+    border-bottom: 1px dashed var(--line);
+    padding-bottom: 12px;
+    margin-bottom: 18px;
+  }
+  .sidebar-header h2 {
+    margin: 0;
+    font-family: var(--font-header);
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+  }
+  .sidebar-header p {
+    margin: 4px 0 0 0;
+    font-size: 9px;
+    color: rgba(var(--color-accent-rgb), 0.45);
+    letter-spacing: 0.08em;
+  }
+
+  .scroll-content {
+    flex-grow: 1;
+    overflow-y: auto;
+    padding-right: 8px;
+    margin-bottom: 18px;
+  }
+  /* Scrollbar styling */
+  .scroll-content::-webkit-scrollbar {
+    width: 4px;
+  }
+  .scroll-content::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-content::-webkit-scrollbar-thumb {
+    background: var(--line);
+  }
+
+  .settings-section {
+    margin-bottom: 22px;
+  }
+  .settings-section h3 {
+    margin: 0 0 10px 0;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: rgba(var(--color-accent-rgb), 0.5);
+    border-left: 2px solid var(--color-accent);
+    padding-left: 8px;
+    text-transform: uppercase;
+  }
+
+  .control-group {
+    margin-bottom: 12px;
+  }
+  .control-group label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: rgba(var(--color-accent-rgb), 0.7);
+    margin-bottom: 5px;
+    letter-spacing: 0.05em;
+  }
+  .control-group label span.val {
+    color: var(--color-accent);
+    font-weight: 700;
+  }
+  .control-group input[type="range"] {
+    width: 100%;
+    appearance: none;
+    background: var(--line-soft);
+    height: 3px;
+    outline: none;
+    transition: background 0.15s;
+  }
+  .control-group input[type="range"]::-webkit-slider-thumb {
+    appearance: none;
+    width: 10px;
+    height: 10px;
+    background: var(--color-accent);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 0 6px rgba(var(--color-accent-rgb), 0.5);
+    transition: transform 0.1s;
+  }
+  .control-group input[type="range"]::-webkit-slider-thumb:hover {
+    transform: scale(1.2);
+  }
+
+  .select-group select {
+    width: 100%;
+    background: rgba(var(--bg-void), 0.8);
+    border: 1px solid var(--line);
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 8px 10px;
+    outline: none;
+    cursor: pointer;
+  }
+  .select-group select:focus {
+    border-color: var(--color-accent);
+  }
+
+  .upload-area {
+    border: 1px dashed var(--line);
+    padding: 12px;
+    text-align: center;
+    cursor: pointer;
+    font-size: 10px;
+    transition: background 0.15s, border-color 0.15s;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .upload-area:hover {
+    background: rgba(var(--color-accent-rgb), 0.04);
+    border-color: var(--color-accent);
+  }
+  .upload-area .filename {
+    font-weight: 700;
+    word-break: break-all;
+  }
+
+  .textarea-group textarea {
+    width: 100%;
+    height: 80px;
+    background: rgba(var(--bg-void), 0.8);
+    border: 1px solid var(--line);
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 8px;
+    resize: none;
+    outline: none;
+  }
+  .textarea-group textarea:focus {
+    border-color: var(--color-accent);
+  }
+
+  /* Dock and main action buttons */
+  .sidebar-footer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-top: 1px dashed var(--line);
+    padding-top: 14px;
+  }
+  .btn-row {
+    display: flex;
+    gap: 6px;
+  }
+  .btn-row button {
+    flex: 1;
+  }
+  button.action-btn {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--color-accent);
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    padding: 10px 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  button.action-btn:hover:not(:disabled) {
+    background: var(--color-accent);
+    color: var(--bg-void);
+    border-color: var(--color-accent);
+  }
+  button.action-btn:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+  button.action-btn.primary {
+    background: rgba(var(--color-accent-rgb), 0.1);
+    font-weight: 700;
+    border-color: var(--color-accent);
+  }
+  button.action-btn.primary:hover:not(:disabled) {
+    background: var(--color-accent);
+    color: var(--bg-void);
+  }
+
+  .present-banner {
+    position: fixed;
+    top: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid var(--line);
+    padding: 6px 12px;
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    pointer-events: none;
+    z-index: 99;
+    opacity: 0;
+    transition: opacity 0.5s ease;
+  }
+  .present-banner.visible {
+    opacity: 0.85;
+  }
+
+  /* Timeline scrub bar */
+  .scrub-container {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: 4px;
+    background: rgba(var(--color-accent-rgb), 0.05);
+    z-index: 10;
+    cursor: pointer;
+  }
+  .scrub-fill {
+    height: 100%;
+    background: var(--color-accent);
+    width: 0%;
+    box-shadow: 0 0 6px var(--color-accent);
+    transition: width 0.1s linear;
+  }
+
+  .ambient-idle-msg {
+    position: fixed;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 3;
+    text-align: center;
+    color: rgba(var(--color-accent-rgb), 0.25);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    line-height: 2;
+    text-transform: uppercase;
+    pointer-events: none;
+    max-width: 460px;
+    transition: opacity 0.5s ease;
+  }
+  .ambient-idle-msg.hidden {
+    opacity: 0;
+  }
+</style>
+</head>
+<body class="theme-monochrome">
+
+<!-- Dual Canvas Backdrop -->
+<canvas id="gl-canvas"></canvas>
+<canvas id="visualizer-canvas"></canvas>
+
+<!-- Top and Bottom HUD Elements -->
+<div class="hud-container">
+  <div class="hud-top">
+    <div class="brand">STRATA // <span>LINK_SECURE</span></div>
+    <div class="hud-readout">
+      <div><b>DEVIATION:</b> <span id="hud-deviation">0.00%</span></div>
+      <div><b>HYPNOSIS:</b> <span id="hud-hypnosis">0.0%</span></div>
+    </div>
+  </div>
+  <div class="hud-bottom">
+    <div class="hud-status-group">
+      <div class="hud-live-tag"><div class="pulse-dot"></div> <span id="live-text">LINK PENDING</span></div>
+      <div style="font-size: 9px; opacity: 0.65; margin-top: 4px;">Uptime: <span id="hud-uptime">00:00:00</span></div>
+    </div>
+    <div class="hud-readout" style="text-align: right;">
+      <div><span id="hud-word-index">—</span> / <span id="hud-total-words">0</span> words</div>
+      <div id="hud-time" style="font-weight: 700; margin-top: 4px;">00:00 / 00:00</div>
+    </div>
+  </div>
+</div>
+
+<!-- Dynamic Speech / Subtitle Overlay -->
+<div class="subtitle-container">
+  <div class="speech-text" id="subtitleText"></div>
+</div>
+
+<!-- Visual Reminder for Present Mode -->
+<div class="present-banner" id="presentBanner">Presentation Mode Active. Press 'H' to exit.</div>
+
+<!-- Progress Scrub Bar -->
+<div class="scrub-container" id="scrubContainer">
+  <div class="scrub-fill" id="scrubFill"></div>
+</div>
+
+<!-- Idle / Upload Prompt -->
+<div class="ambient-idle-msg" id="idlePrompt">
+  [ Awaiting Connection ]<br>
+  upload audio and transcript in the control panel.<br>
+  press 'H' to toggle recording view.
+</div>
+
+<!-- Control Panel Sidebar -->
+<div class="control-sidebar" id="sidebar">
+  <button class="sidebar-toggle-btn" id="sidebarToggle" title="Toggle Sidebar (H key)">◂</button>
+  
+  <div class="sidebar-header">
+    <h2>Control Panel</h2>
+    <p>STRATA // Analogue Horror Audio Visualizer</p>
+  </div>
+
+  <div class="scroll-content">
+    
+    <!-- SECTION 1: Audio / Transcription -->
+    <div class="settings-section">
+      <h3>1. Signal Input</h3>
+      
+      <div class="control-group">
+        <label>Audio File</label>
+        <label for="audioInput" class="upload-area" id="audioUploadArea">
+          <span>Click to select audio</span>
+          <span class="filename" id="audioFilename">No file chosen</span>
+        </label>
+        <input type="file" id="audioInput" accept="audio/*" style="display: none;">
+      </div>
+
+      <div class="control-group select-group">
+        <label>Visual Background Source</label>
+        <select id="bgSourceSelect">
+          <option value="default">Default Concentric Ripples</option>
+          <option value="image">Custom Background Image</option>
+          <option value="webcam">Webcam Stream (Creepy Warp)</option>
+        </select>
+      </div>
+
+      <div class="control-group" id="imageUploadGroup" style="display: none;">
+        <label>Background Image</label>
+        <label for="bgImageInput" class="upload-area" id="imageUploadArea">
+          <span>Click to select image</span>
+          <span class="filename" id="imageFilename">No file chosen</span>
+        </label>
+        <input type="file" id="bgImageInput" accept="image/*" style="display: none;">
+      </div>
+
+      <div class="control-group textarea-group">
+        <label>AI Dialogue Transcript (Synced to Peaks)</label>
+        <textarea id="transcriptInput" placeholder="Paste or type the dialogue here... Each word will sync to an audio peak for typewriter display."></textarea>
+      </div>
+    </div>
+
+    <!-- SECTION 2: Vortex & Glitch WebGL Shaders -->
+    <div class="settings-section">
+      <h3>2. Vortex & Glitch Effects</h3>
+      
+      <div class="control-group">
+        <label>Vortex Radial Warping <span class="val" id="val-vortex-int">1.0</span></label>
+        <input type="range" id="param-vortex-int" min="0" max="2.5" step="0.1" value="1.0">
+      </div>
+
+      <div class="control-group">
+        <label>Vortex Ripple Frequency <span class="val" id="val-vortex-freq">15.0</span></label>
+        <input type="range" id="param-vortex-freq" min="5" max="30" step="0.5" value="15.0">
+      </div>
+
+      <div class="control-group">
+        <label>Vortex Wave Speed <span class="val" id="val-vortex-speed">2.0</span></label>
+        <input type="range" id="param-vortex-speed" min="0.5" max="5.0" step="0.1" value="2.0">
+      </div>
+
+      <div class="control-group">
+        <label>Chromatic Aberration <span class="val" id="val-glitch-chroma">0.6</span></label>
+        <input type="range" id="param-glitch-chroma" min="0" max="2.0" step="0.05" value="0.6">
+      </div>
+
+      <div class="control-group">
+        <label>Scanline & Noise Density <span class="val" id="val-glitch-noise">0.5</span></label>
+        <input type="range" id="param-glitch-noise" min="0" max="1.5" step="0.05" value="0.5">
+      </div>
+    </div>
+
+    <!-- SECTION 3: Visualizer Customization -->
+    <div class="settings-section">
+      <h3>3. 3D Waveform Aesthetics</h3>
+
+      <div class="control-group select-group">
+        <label>Color Theme Palette</label>
+        <select id="themeSelect">
+          <option value="theme-monochrome">Monochrome (Bone & Ash)</option>
+          <option value="theme-phantasm">Phantasm (Muted Flesh)</option>
+          <option value="theme-crimson">Blood Loop (Scarlet & Abyss)</option>
+          <option value="theme-toxic">Toxic Spill (Radioactive Green)</option>
+          <option value="theme-abyssal">Abyssal (Phosphor Blue)</option>
+        </select>
+      </div>
+
+      <div class="control-group select-group">
+        <label>Adaptive Waveform Color</label>
+        <select id="adaptiveColorSelect">
+          <option value="false">Static Theme Accent Color</option>
+          <option value="true">Sample Background Colors (Compiled)</option>
+        </select>
+      </div>
+
+      <div class="control-group">
+        <label>Audio Sensitivity <span class="val" id="val-audio-sens">1.5</span></label>
+        <input type="range" id="param-audio-sens" min="0.5" max="3.5" step="0.1" value="1.5">
+      </div>
+
+      <div class="control-group">
+        <label>Disc Spacing <span class="val" id="val-disc-spacing">10</span></label>
+        <input type="range" id="param-disc-spacing" min="4" max="24" step="1" value="10">
+      </div>
+
+      <div class="control-group">
+        <label>Disc Count <span class="val" id="val-disc-count">85</span></label>
+        <input type="range" id="param-disc-count" min="40" max="150" step="5" value="85">
+      </div>
+
+      <div class="control-group">
+        <label>Disc Width <span class="val" id="val-disc-width">10</span></label>
+        <input type="range" id="param-disc-width" min="3" max="25" step="0.5" value="10">
+      </div>
+
+      <div class="control-group select-group">
+        <label>Rib / Groove Density</label>
+        <select id="ribDensitySelect">
+          <option value="none">Smooth (No Grooves)</option>
+          <option value="low">Low (3 slices)</option>
+          <option value="medium" selected>Medium (5 slices)</option>
+          <option value="high">High (8 slices)</option>
+        </select>
+      </div>
+
+      <div class="control-group select-group">
+        <label>Faux-3D Shadows</label>
+        <select id="shadowSelect">
+          <option value="hard" selected>Hard (Fast Vector)</option>
+          <option value="soft">Soft (Realistic Blur)</option>
+          <option value="none">None</option>
+        </select>
+      </div>
+
+      <div class="control-group select-group">
+        <label>Waveform Axis Rod</label>
+        <select id="spindleSelect">
+          <option value="true" selected>Shiny Metal Spindle</option>
+          <option value="false">None</option>
+        </select>
+      </div>
+
+      <div class="control-group select-group">
+        <label>Dialogue Subtitle Mode</label>
+        <select id="subtitleModeSelect">
+          <option value="bottom" selected>Typewriter Subtitle</option>
+          <option value="3d">Canvas 3D Depth Stack</option>
+        </select>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="sidebar-footer">
+    <div class="btn-row">
+      <button class="action-btn primary" id="playBtn" disabled>▶ Connect</button>
+      <button class="action-btn" id="restartBtn" disabled>⟲ Reset</button>
+    </div>
+    <button class="action-btn" id="presentBtn">📺 Recording View (H)</button>
+  </div>
+</div>
+
+<!-- WebGL Background Shaders -->
+<script id="vertex-shader" type="x-shader/x-vertex">
+  attribute vec2 a_position;
+  attribute vec2 a_texcoord;
+  varying vec2 v_texcoord;
+  void main() {
+    gl_Position = vec4(a_position, 0.0, 1.0);
+    v_texcoord = a_texcoord;
+  }
+</script>
+
+<script id="fragment-shader" type="x-shader/x-fragment">
+  precision mediump float;
+  varying vec2 v_texcoord;
+  uniform sampler2D u_texture;
+  uniform float u_time;
+  uniform float u_bass;
+  uniform float u_mid;
+  uniform float u_treble;
+  uniform float u_glitch_chroma;
+  uniform float u_glitch_noise;
+  uniform float u_vortex_intensity;
+  uniform float u_vortex_freq;
+  uniform float u_vortex_speed;
+  uniform vec2 u_resolution;
+
+  // Simple pseudo-random hash generator
+  float hash(vec2 co) {
+    return fract(sin(dot(co.xy, vec2(12.9898, 78.233))) * 43758.5453);
+  }
+
+  void main() {
+    vec2 uv = v_texcoord;
+    vec2 center = vec2(0.5, 0.5);
+    
+    // Adjust radial distance for aspect ratio
+    vec2 aspectVec = vec2(u_resolution.x / u_resolution.y, 1.0);
+    vec2 toCenter = (uv - center) * aspectVec;
+    float dist = length(toCenter);
+    
+    // Vortex concentric ripple warping equation
+    float ripple = sin(dist * u_vortex_freq - u_time * u_vortex_speed) * 0.5 + 0.5;
+    vec2 dir = normalize(uv - center);
+    
+    // Glitch dynamic triggering (driven by mid/bass peaks + hash)
+    float timeTicks = floor(u_time * 18.0);
+    float glitchTrigger = step(0.93 - (u_bass * 0.05), hash(vec2(timeTicks, 17.31))) * u_glitch_noise;
+    
+    // Random horizontal split scanline offsets during glitch
+    if (glitchTrigger > 0.0) {
+      float rowNoise = hash(vec2(timeTicks, floor(uv.y * 32.0)));
+      if (rowNoise > 0.65) {
+        uv.x += (hash(vec2(timeTicks, uv.y)) - 0.5) * 0.035 * u_glitch_noise;
+      }
+    }
+
+    // Radial ripple displacement warping mapped to audio bass response
+    float displacement = ripple * 0.02 * u_vortex_intensity * (0.08 + u_bass * 1.5);
+    vec2 warpedUv = uv - dir * displacement;
+    
+    // Clamp coordinates to avoid sampling wrap artifacts
+    warpedUv = clamp(warpedUv, 0.001, 0.999);
+    
+    // Chromatic aberration (RGB channel splitting)
+    vec4 color;
+    float chromaShift = (0.002 + u_glitch_chroma * 0.006 + glitchTrigger * 0.012) * (0.3 + u_mid * 1.2);
+    
+    color.r = texture2D(u_texture, warpedUv + vec2(chromaShift, 0.0)).r;
+    color.g = texture2D(u_texture, warpedUv).g;
+    color.b = texture2D(u_texture, warpedUv - vec2(chromaShift, 0.0)).b;
+    color.a = 1.0;
+    
+    // Overlay scanning grid / scanlines
+    float scanline = sin(uv.y * u_resolution.y * 1.25) * 0.5 + 0.5;
+    color.rgb *= mix(1.0, 0.86 - 0.06 * u_glitch_noise, scanline * u_glitch_noise);
+    
+    // Add film grain/dust static noise
+    float grain = (hash(uv + u_time) - 0.5) * 0.075 * u_glitch_noise * (1.0 + u_treble);
+    color.rgb += vec3(grain);
+    
+    // Soft analogue vignette
+    float vignette = smoothstep(0.9, 0.22, length(uv - 0.5));
+    color.rgb *= mix(0.04, 1.0, vignette);
+    
+    gl_FragColor = color;
+  }
+</script>
+
+<script>
+(function() {
+  // Elements
+  const glCanvas = document.getElementById('gl-canvas');
+  const visCanvas = document.getElementById('visualizer-canvas');
+  const gl = glCanvas.getContext('webgl') || glCanvas.getContext('experimental-webgl');
+  const ctx = visCanvas.getContext('2d');
+  
+  const sidebar = document.getElementById('sidebar');
+  const sidebarToggle = document.getElementById('sidebarToggle');
+  const themeSelect = document.getElementById('themeSelect');
+  const bgSourceSelect = document.getElementById('bgSourceSelect');
+  const imageUploadGroup = document.getElementById('imageUploadGroup');
+  const audioInput = document.getElementById('audioInput');
+  const audioFilename = document.getElementById('audioFilename');
+  const bgImageInput = document.getElementById('bgImageInput');
+  const imageFilename = document.getElementById('imageFilename');
+  const transcriptInput = document.getElementById('transcriptInput');
+  const playBtn = document.getElementById('playBtn');
+  const restartBtn = document.getElementById('restartBtn');
+  const presentBtn = document.getElementById('presentBtn');
+  const presentBanner = document.getElementById('presentBanner');
+  const scrubContainer = document.getElementById('scrubContainer');
+  const scrubFill = document.getElementById('scrubFill');
+  const idlePrompt = document.getElementById('idlePrompt');
+  const subtitleText = document.getElementById('subtitleText');
+  
+  // HUD Elements
+  const hudDeviation = document.getElementById('hud-deviation');
+  const hudHypnosis = document.getElementById('hud-hypnosis');
+  const liveText = document.getElementById('live-text');
+  const hudUptime = document.getElementById('hud-uptime');
+  const hudWordIndex = document.getElementById('hud-word-index');
+  const hudTotalWords = document.getElementById('hud-total-words');
+  const hudTime = document.getElementById('hud-time');
+
+  // Device Pixel Ratio Handling
+  const DPR = Math.min(window.devicePixelRatio || 1, 2);
+  let w = window.innerWidth, h = window.innerHeight;
+
+  function resize() {
+    w = window.innerWidth;
+    h = window.innerHeight;
+    
+    glCanvas.width = w;
+    glCanvas.height = h;
+    glCanvas.style.width = w + 'px';
+    glCanvas.style.height = h + 'px';
+    
+    visCanvas.width = w * DPR;
+    visCanvas.height = h * DPR;
+    visCanvas.style.width = w + 'px';
+    visCanvas.style.height = h + 'px';
+    
+    if (gl) gl.viewport(0, 0, w, h);
+    
+    // Regenerate current texture if aspect ratio changes
+    if (bgSource === 'default') {
+      loadDefaultTexture();
+    }
+  }
+  window.addEventListener('resize', resize);
+
+  // Audio Variables
+  let audioCtx = null;
+  let audioBuffer = null;
+  let sourceNode = null;
+  let analyser = null;
+  let freqData = null;
+  let timeData = null;
+  let onsets = [];
+  let schedule = [];
+  let words = [];
+
+  let playing = false;
+  let startedAt = 0;
+  let pausedOffset = 0;
+  let wordTimer = 0;
+  let systemUptime = 0;
+
+  // Background Settings
+  let bgSource = 'default'; // 'default', 'image', 'webcam'
+  let bgImage = new Image();
+  let webcamStream = null;
+  let webcamVideo = document.createElement('video');
+  webcamVideo.autoplay = true;
+  webcamVideo.muted = true;
+  webcamVideo.playsInline = true;
+
+  // Glitch State
+  let randomDeviation = 0;
+  let hypnosisFactor = 0;
+
+  // Parameter bindings
+  const params = {
+    vortexInt: document.getElementById('param-vortex-int'),
+    vortexFreq: document.getElementById('param-vortex-freq'),
+    vortexSpeed: document.getElementById('param-vortex-speed'),
+    glitchChroma: document.getElementById('param-glitch-chroma'),
+    glitchNoise: document.getElementById('param-glitch-noise'),
+    audioSens: document.getElementById('param-audio-sens'),
+    discSpacing: document.getElementById('param-disc-spacing'),
+    discCount: document.getElementById('param-disc-count'),
+    discWidth: document.getElementById('param-disc-width'),
+    ribDensity: document.getElementById('ribDensitySelect'),
+    shadows: document.getElementById('shadowSelect'),
+    spindle: document.getElementById('spindleSelect'),
+    subtitleMode: document.getElementById('subtitleModeSelect'),
+    adaptiveColor: document.getElementById('adaptiveColorSelect')
+  };
+
+  // Add event listeners to display current parameter values
+  Object.keys(params).forEach(key => {
+    const input = params[key];
+    if (input.tagName === 'INPUT') {
+      const display = document.getElementById('val-' + input.id.replace('param-', ''));
+      if (display) {
+        input.addEventListener('input', () => display.textContent = input.value);
+      }
+    }
+  });
+
+  // ---------- WebGL Setup ----------
+  let glProgram = null;
+  let glTexture = null;
+  let positionBuffer = null;
+  let texcoordBuffer = null;
+
+  if (gl) {
+    initGL();
+  } else {
+    console.error("WebGL not supported. Visualizer will run in fallback 2D mode.");
+  }
+
+  function compileShader(source, type) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+      gl.deleteShader(shader);
+      return null;
+    }
+    return shader;
+  }
+
+  function initGL() {
+    const vsSource = document.getElementById('vertex-shader').text;
+    const fsSource = document.getElementById('fragment-shader').text;
+    
+    const vertexShader = compileShader(vsSource, gl.VERTEX_SHADER);
+    const fragmentShader = compileShader(fsSource, gl.FRAGMENT_SHADER);
+    
+    glProgram = gl.createProgram();
+    gl.attachShader(glProgram, vertexShader);
+    gl.attachShader(glProgram, fragmentShader);
+    gl.linkProgram(glProgram);
+    
+    if (!gl.getProgramParameter(glProgram, gl.LINK_STATUS)) {
+      console.error('Program link error:', gl.getProgramInfoLog(glProgram));
+      return;
+    }
+    
+    gl.useProgram(glProgram);
+    
+    // Quad positions (2 triangles covering canvas)
+    const positions = new Float32Array([
+      -1, -1,
+       1, -1,
+      -1,  1,
+      -1,  1,
+       1, -1,
+       1,  1
+    ]);
+    
+    positionBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, positions, gl.STATIC_DRAW);
+    
+    // UV Texture Coordinates
+    const texcoords = new Float32Array([
+      0, 1,
+      1, 1,
+      0, 0,
+      0, 0,
+      1, 1,
+      1, 0
+    ]);
+    
+    texcoordBuffer = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, texcoords, gl.STATIC_DRAW);
+    
+    // Setup position attribute
+    const posAttr = gl.getAttribLocation(glProgram, 'a_position');
+    gl.enableVertexAttribArray(posAttr);
+    gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+    gl.vertexAttribPointer(posAttr, 2, gl.FLOAT, false, 0, 0);
+    
+    // Setup texcoord attribute
+    const texAttr = gl.getAttribLocation(glProgram, 'a_texcoord');
+    gl.enableVertexAttribArray(texAttr);
+    gl.bindBuffer(gl.ARRAY_BUFFER, texcoordBuffer);
+    gl.vertexAttribPointer(texAttr, 2, gl.FLOAT, false, 0, 0);
+    
+    // Initialize WebGL Texture
+    glTexture = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, glTexture);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    
+    loadDefaultTexture();
+  }
+
+  // Generate the grey concentric ripple texture out of the box
+  function loadDefaultTexture() {
+    const texWidth = 1024;
+    const texHeight = 576;
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = texWidth;
+    tempCanvas.height = texHeight;
+    const tCtx = tempCanvas.getContext('2d');
+    
+    // Deep dark background
+    tCtx.fillStyle = '#060608';
+    tCtx.fillRect(0, 0, texWidth, texHeight);
+    
+    const cx = texWidth / 2;
+    const cy = texHeight / 2;
+    
+    // Draw circular soft concentric ripples matching user's visual style
+    const steps = 14;
+    const spacing = 45;
+    for (let i = 0; i < steps; i++) {
+      const radius = 60 + i * spacing;
+      const opacity = 0.08 - (i * 0.003); // Ripple fades outward
+      
+      const grad = tCtx.createRadialGradient(cx, cy, radius - 25, cx, cy, radius + 25);
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(0.5, `rgba(200,200,210,${opacity})`);
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      
+      tCtx.fillStyle = grad;
+      tCtx.beginPath();
+      tCtx.arc(cx, cy, radius + 25, 0, Math.PI * 2);
+      tCtx.fill();
+    }
+    
+    // Apply a light vignette to the texture itself
+    const vigGrad = tCtx.createRadialGradient(cx, cy, texWidth * 0.2, cx, cy, texWidth * 0.6);
+    vigGrad.addColorStop(0, 'rgba(0,0,0,0)');
+    vigGrad.addColorStop(1, 'rgba(0,0,0,0.85)');
+    tCtx.fillStyle = vigGrad;
+    tCtx.fillRect(0, 0, texWidth, texHeight);
+    
+    updateGLTexture(tempCanvas);
+  }
+
+  function updateGLTexture(source) {
+    if (!gl) return;
+    gl.bindTexture(gl.TEXTURE_2D, glTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+  }
+
+  // ---------- Control Sidebar UI Event Listeners ----------
+  sidebarToggle.addEventListener('click', toggleSidebar);
+
+  function toggleSidebar() {
+    sidebar.classList.toggle('closed');
+    sidebarToggle.textContent = sidebar.classList.contains('closed') ? '▸' : '◂';
+  }
+
+  themeSelect.addEventListener('change', () => {
+    document.body.className = '';
+    document.body.classList.add(themeSelect.value);
+  });
+
+  bgSourceSelect.addEventListener('change', () => {
+    const src = bgSourceSelect.value;
+    bgSource = src;
+    
+    // Show/hide relevant file inputs
+    imageUploadGroup.style.display = src === 'image' ? 'block' : 'none';
+    
+    // Clean up webcam if switched away
+    if (src !== 'webcam' && webcamStream) {
+      const tracks = webcamStream.getTracks();
+      tracks.forEach(track => track.stop());
+      webcamStream = null;
+    }
+    
+    if (src === 'default') {
+      loadDefaultTexture();
+    } else if (src === 'image') {
+      if (bgImage.src) {
+        updateGLTexture(bgImage);
+      } else {
+        loadDefaultTexture();
+      }
+    } else if (src === 'webcam') {
+      initWebcam();
+    }
+  });
+
+  bgImageInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    imageFilename.textContent = file.name;
+    const reader = new FileReader();
+    reader.onload = function(event) {
+      bgImage.onload = () => {
+        if (bgSource === 'image') {
+          updateGLTexture(bgImage);
+        }
+      };
+      bgImage.src = event.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  async function initWebcam() {
+    try {
+      webcamStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: 1280, height: 720 },
+        audio: false
+      });
+      webcamVideo.srcObject = webcamStream;
+      webcamVideo.play();
+    } catch(err) {
+      console.error("Camera access denied or unavailable: ", err);
+      alert("Webcam feed could not be started. Check system permissions.");
+      bgSourceSelect.value = 'default';
+      bgSourceSelect.dispatchEvent(new Event('change'));
+    }
+  }
+
+  // ---------- Audio Input & Buffering ----------
+  audioInput.addEventListener('change', async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    audioFilename.textContent = file.name;
+    idlePrompt.textContent = '[ Listening to Audio Signal... ]';
+    
+    try {
+      const arrayBuf = await file.arrayBuffer();
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      
+      // Decode audio asynchronously
+      audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
+      idlePrompt.textContent = '[ Running Onset Peak Analysis... ]';
+      
+      // Run offline peak/onset detection for subtitles
+      await new Promise(r => setTimeout(r, 10));
+      onsets = analyzeOnsets(audioBuffer);
+      
+      // Rebuild scheduling if words exist
+      if (words.length) {
+        schedule = buildSchedule(words, audioBuffer.duration, onsets);
+      }
+      
+      playBtn.disabled = false;
+      restartBtn.disabled = false;
+      pausedOffset = 0;
+      liveText.textContent = 'LINK CONNECTED';
+      idlePrompt.classList.add('hidden');
+      
+      // Flash live feed status
+      flashLiveIndicator();
+    } catch(err) {
+      console.error(err);
+      idlePrompt.textContent = '[ Connection Failed: Corrupt Audio ]';
+      playBtn.disabled = true;
+      restartBtn.disabled = true;
+    }
+  });
+
+  transcriptInput.addEventListener('input', () => {
+    const txt = transcriptInput.value.trim();
+    words = txt.length ? txt.split(/\s+/) : [];
+    hudTotalWords.textContent = words.length;
+    
+    if (audioBuffer) {
+      schedule = buildSchedule(words, audioBuffer.duration, onsets);
+    }
+  });
+
+  function flashLiveIndicator() {
+    const tag = document.querySelector('.hud-live-tag');
+    tag.style.background = 'rgba(var(--color-accent-rgb), 0.28)';
+    setTimeout(() => {
+      tag.style.background = 'rgba(var(--color-accent-rgb), 0.1)';
+    }, 400);
+  }
+
+  // ---------- Audio Onset Analyzer & Scheduler ----------
+  function analyzeOnsets(buffer) {
+    const channels = [];
+    for (let c = 0; c < buffer.numberOfChannels; c++) {
+      channels.push(buffer.getChannelData(c));
+    }
+    
+    const sampleRate = buffer.sampleRate;
+    const windowSize = Math.floor(sampleRate * 0.045); // 45ms window
+    const stepSize = Math.floor(sampleRate * 0.015);  // 15ms overlap steps
+    const bufferLength = buffer.length;
+    const energies = [];
+
+    // Calculate energy envelopes
+    for (let start = 0; start < bufferLength; start += stepSize) {
+      let sum = 0;
+      const end = Math.min(start + windowSize, bufferLength);
+      let count = 0;
+      
+      for (let c = 0; c < channels.length; c++) {
+        const data = channels[c];
+        for (let i = start; i < end; i += 2) {
+          sum += data[i] * data[i];
+          count++;
+        }
+      }
+      energies.push(Math.sqrt(sum / Math.max(count, 1)));
+    }
+
+    const peaks = [];
+    const thresholdWindow = 7;
+    
+    // Perform dynamic threshold filtering for onset capture
+    for (let i = thresholdWindow; i < energies.length - thresholdWindow; i++) {
+      let sum = 0, num = 0;
+      for (let k = i - thresholdWindow; k < i; k++) {
+        sum += energies[k];
+        num++;
+      }
+      const localAvg = num ? (sum / num) : 0;
+      
+      // Peak must be a local maximum and above adaptive threshold
+      if (energies[i] > localAvg * 1.18 && 
+          energies[i] >= energies[i - 1] && 
+          energies[i] >= energies[i + 1] && 
+          energies[i] > 0.01) {
+        
+        const timestamp = (i * stepSize) / sampleRate;
+        if (peaks.length === 0 || timestamp - peaks[peaks.length - 1] > 0.13) {
+          peaks.push(timestamp);
+        }
+      }
+    }
+    return peaks;
+  }
+
+  // Map transcript words to audio peaks dynamically
+  function buildSchedule(wordList, duration, peaks) {
+    if (wordList.length === 0) return [];
+    
+    const weights = wordList.map(w => Math.max(w.length, 3.5));
+    const sumWeights = weights.reduce((a, b) => a + b, 0);
+    
+    let cumulative = 0;
+    const baselineTimes = weights.map(wt => {
+      const time = duration * (cumulative / sumWeights);
+      cumulative += wt;
+      return time;
+    });
+
+    const mappedSet = new Set();
+    const sched = baselineTimes.map((baseT, i) => {
+      let closestOnset = null;
+      let minDistance = 0.38; // Maximum search radius around baseline time
+      
+      peaks.forEach((peakTime, idx) => {
+        if (mappedSet.has(idx)) return;
+        const d = Math.abs(peakTime - baseT);
+        if (d < minDistance) {
+          minDistance = d;
+          closestOnset = idx;
+        }
+      });
+
+      let timestamp = baseT;
+      if (closestOnset !== null) {
+        mappedSet.add(closestOnset);
+        timestamp = peaks[closestOnset];
+      }
+      return { word: wordList[i], t: timestamp };
+    });
+
+    sched.sort((a, b) => a.t - b.t);
+    return sched;
+  }
+
+  // ---------- Audio Context Connect & Playback ----------
+  function startPlayback(offset) {
+    if (!audioBuffer) return;
+    
+    if (sourceNode) {
+      try { sourceNode.stop(); } catch(e) {}
+    }
+    
+    sourceNode = audioCtx.createBufferSource();
+    sourceNode.buffer = audioBuffer;
+    
+    if (!analyser) {
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.65;
+      freqData = new Uint8Array(analyser.frequencyBinCount);
+      timeData = new Uint8Array(analyser.frequencyBinCount);
+    }
+    
+    sourceNode.connect(analyser);
+    analyser.connect(audioCtx.destination);
+    
+    sourceNode.start(0, offset);
+    startedAt = audioCtx.currentTime - offset;
+    playing = true;
+    
+    playBtn.textContent = '⏸ Disconnect';
+    
+    sourceNode.onended = () => {
+      if (playing) {
+        playing = false;
+        pausedOffset = 0;
+        playBtn.textContent = '▶ Connect';
+        liveText.textContent = 'LINK ENDED';
+      }
+    };
+  }
+
+  playBtn.addEventListener('click', () => {
+    if (!audioBuffer) return;
+    if (audioCtx.state === 'suspended') {
+      audioCtx.resume();
+    }
+    
+    if (playing) {
+      pausedOffset = audioCtx.currentTime - startedAt;
+      try { sourceNode.stop(); } catch(e) {}
+      playing = false;
+      playBtn.textContent = '▶ Connect';
+      liveText.textContent = 'LINK PAUSED';
+    } else {
+      startPlayback(pausedOffset % (audioBuffer.duration || 1));
+      liveText.textContent = 'LIVE FEED LINK';
+    }
+    flashLiveIndicator();
+  });
+
+  restartBtn.addEventListener('click', () => {
+    if (!audioBuffer) return;
+    pausedOffset = 0;
+    if (playing) {
+      startPlayback(0);
+    } else {
+      playBtn.textContent = '▶ Connect';
+    }
+    flashLiveIndicator();
+  });
+
+  // Scrub bar interaction
+  scrubContainer.addEventListener('click', (e) => {
+    if (!audioBuffer) return;
+    const rect = scrubContainer.getBoundingClientRect();
+    const percent = (e.clientX - rect.left) / rect.width;
+    const seekTime = percent * audioBuffer.duration;
+    
+    if (playing) {
+      startPlayback(seekTime);
+    } else {
+      pausedOffset = seekTime;
+      scrubFill.style.width = (percent * 100) + '%';
+      hudTime.textContent = fmtTime(seekTime) + ' / ' + fmtTime(audioBuffer.duration);
+    }
+  });
+
+  function fmtTime(s) {
+    if (!isFinite(s) || s < 0) s = 0;
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return String(m).padStart(2, '0') + ':' + String(sec).padStart(2, '0');
+  }
+
+  // Keyboard Shortcuts ('H' for recording view, 'Space' for play/pause)
+  window.addEventListener('keydown', (e) => {
+    if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    
+    if (e.key.toLowerCase() === 'h') {
+      e.preventDefault();
+      togglePresentMode();
+    }
+    if (e.key === ' ') {
+      e.preventDefault();
+      playBtn.click();
+    }
+  });
+
+  presentBtn.addEventListener('click', togglePresentMode);
+
+  function togglePresentMode() {
+    toggleSidebar();
+    const isClosed = sidebar.classList.contains('closed');
+    presentBanner.classList.toggle('visible', isClosed);
+  }
+
+  // Helper: Average Frequency Ranges
+  function getAvgRange(data, lo, hi) {
+    let sum = 0, count = 0;
+    for (let i = lo; i < hi && i < data.length; i++) {
+      sum += data[i];
+      count++;
+    }
+    return count ? (sum / count) : 0;
+  }
+
+  // ---------- 3D Ribbed Waveform Core Renderer ----------
+  function drawRibbedWaveform(time, bass, mid, treble, ampScale) {
+    const width = visCanvas.width;
+    const height = visCanvas.height;
+    const midY = height / 2;
+
+    const countSetting = parseInt(params.discCount.value);
+    const spacingSetting = parseInt(params.discSpacing.value) * DPR;
+    const widthSetting = parseFloat(params.discWidth.value) * DPR;
+    
+    const waveLength = countSetting * spacingSetting;
+    const startX = (width - waveLength) / 2 + (spacingSetting / 2);
+
+    // 1. Draw central structural Spindle Rod
+    if (params.spindle.value === 'true') {
+      const spindleGrad = ctx.createLinearGradient(startX - 20, midY - 3 * DPR, startX + waveLength + 20, midY + 3 * DPR);
+      
+      // Determine metallic gradient colors based on active theme
+      const accentRGB = getComputedStyle(document.body).getPropertyValue('--color-accent').trim();
+      
+      spindleGrad.addColorStop(0, 'rgba(0,0,0,0.6)');
+      spindleGrad.addColorStop(0.3, accentRGB);
+      spindleGrad.addColorStop(0.5, 'rgba(255,255,255,0.9)');
+      spindleGrad.addColorStop(0.7, accentRGB);
+      spindleGrad.addColorStop(1, 'rgba(0,0,0,0.6)');
+      
+      ctx.fillStyle = spindleGrad;
+      
+      // Draw shadow under spindle
+      ctx.shadowColor = 'rgba(0,0,0,0.7)';
+      ctx.shadowBlur = 6 * DPR;
+      ctx.fillRect(startX - 20, midY - 1.5 * DPR, waveLength + 40, 3 * DPR);
+      ctx.shadowBlur = 0; // Reset
+    }
+
+    // Prepare frequency bins mapped along visualizer length
+    const amplitudes = new Float32Array(countSetting);
+    if (playing && freqData) {
+      for (let i = 0; i < countSetting; i++) {
+        // Distribute FFT bins symmetrically (highest amplitude in center, tapering to edges)
+        const distanceFromCenter = Math.abs(i - (countSetting - 1) / 2);
+        const normDist = distanceFromCenter / ((countSetting - 1) / 2);
+        
+        // Map bins to frequency indices
+        const binIndex = Math.floor((1.0 - normDist) * (freqData.length * 0.7));
+        amplitudes[i] = (freqData[binIndex] / 255.0) * ampScale;
+      }
+    } else {
+      // Breathing ambient wave when idle
+      for (let i = 0; i < countSetting; i++) {
+        const offset = Math.sin(time * 1.5 + i * 0.1) * 0.08 + 0.09;
+        amplitudes[i] = offset * ampScale * 0.4;
+      }
+    }
+
+    // Retrieve styling parameters
+    const shadowType = params.shadows.value;
+    const ribDensity = params.ribDensity.value;
+    const adaptiveColor = params.adaptiveColor.value === 'true';
+
+    // RENDER ORDER: Symmetrical overlapping from edges inwards to the center
+    const centerIndex = Math.floor(countSetting / 2);
+    
+    // Render Left Half
+    for (let i = 0; i < centerIndex; i++) {
+      renderDisc(i, startX + i * spacingSetting, amplitudes[i]);
+    }
+    // Render Right Half (drawn backwards to center)
+    for (let i = countSetting - 1; i >= centerIndex; i--) {
+      renderDisc(i, startX + i * spacingSetting, amplitudes[i]);
+    }
+
+    // Individual Disc Drawing Function
+    function renderDisc(index, x, amp) {
+      const rx = widthSetting;
+      // Base minimum size so discs are always flat circles even without sound
+      const ry = (10 * DPR) + (amp * 200 * DPR);
+      
+      const themeAccent = getComputedStyle(document.body).getPropertyValue('--color-accent').trim();
+      const themeShadow = getComputedStyle(document.body).getPropertyValue('--color-shadow').trim();
+      
+      let discColor = themeAccent;
+      let shadowColor = themeShadow;
+
+      // Compiled adaptive color: samples colors from WebGL canvas underneath!
+      if (adaptiveColor) {
+        try {
+          const sampleX = Math.floor((x / width) * w);
+          const sampleY = Math.floor(h / 2);
+          const pixels = new Uint8Array(4);
+          
+          if (gl) {
+            // Read pixel directly from WebGL drawing buffer
+            gl.readPixels(sampleX, sampleY, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+            if (pixels[3] > 0) {
+              const r = pixels[0], g = pixels[1], b = pixels[2];
+              discColor = `rgb(${r},${g},${b})`;
+              // Shadow is darkened sampled color
+              shadowColor = `rgb(${Math.floor(r*0.2)},${Math.floor(g*0.2)},${Math.floor(b*0.2)})`;
+            }
+          }
+        } catch(e) {
+          // Fallback to theme colors if sampling fails due to loading states
+          discColor = themeAccent;
+          shadowColor = themeShadow;
+        }
+      }
+
+      // Draw Shadow Element
+      if (shadowType !== 'none') {
+        ctx.save();
+        if (shadowType === 'soft') {
+          ctx.filter = `blur(${2 * DPR}px)`;
+          ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        } else {
+          ctx.fillStyle = 'rgba(0,0,0,0.85)';
+        }
+        
+        // Offset shadow slightly down and to the right (simulating top-left light source)
+        ctx.beginPath();
+        ctx.ellipse(x + 3 * DPR, midY + 4 * DPR, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      // Main Disc Body 3D Gradient Filling
+      const grad = ctx.createLinearGradient(x - rx, midY - ry, x + rx / 2, midY + ry / 2);
+      grad.addColorStop(0, '#ffffff'); // Glinting top-left highlight edge
+      grad.addColorStop(0.2, discColor); // Primary color
+      grad.addColorStop(0.7, shadowColor); // Shadow falloff
+      grad.addColorStop(1, '#000000'); // Ambient occlusion edge
+      
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(x, midY, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Inner grooves (stacked rib effects)
+      if (ribDensity !== 'none') {
+        let step = 3;
+        if (ribDensity === 'low') step = 5;
+        if (ribDensity === 'high') step = 2.0;
+
+        ctx.lineWidth = 0.6 * DPR;
+        for (let offset = step; offset < rx - 1; offset += step) {
+          const ratio = (rx - offset) / rx;
+          const irx = rx - offset;
+          const iry = ry * ratio;
+          
+          // Shaded back groove (dark stroke)
+          ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+          ctx.beginPath();
+          ctx.ellipse(x, midY, irx, iry, 0, -Math.PI * 0.2, Math.PI * 0.8);
+          ctx.stroke();
+
+          // Highlighted front groove (soft white/accent glint)
+          ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+          ctx.beginPath();
+          ctx.ellipse(x, midY, irx, iry, 0, Math.PI * 0.8, -Math.PI * 0.2);
+          ctx.stroke();
+        }
+      }
+      
+      // Fine outer silhouette stroke to hold vector structure crisp
+      ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+      ctx.lineWidth = 0.5 * DPR;
+      ctx.beginPath();
+      ctx.ellipse(x, midY, rx, ry, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  // ---------- Legacy 3D Words Depth Stack Overlay ----------
+  function drawCanvas3DWords(word, progress, bass, mid, treble, time) {
+    if (!word) return;
+    const cx = visCanvas.width / 2;
+    const cy = visCanvas.height * 0.72; // Below the center waveform spindle
+    const layers = 15;
+    
+    // Size multiplier on onset impact
+    const pop = Math.max(0, 1 - progress * 2.8);
+    
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    
+    // Draw 3D layered text stack facing forward
+    for (let L = 0; L < layers; L++) {
+      const t = L / (layers - 1);
+      const ease = t * t * (3 - 2 * t);
+      
+      const size = (16 * DPR + ease * 120 * DPR) * (1 + bass * 0.18 * ease + pop * 0.3 * ease);
+      const alpha = Math.pow(t, 1.8) * 0.88 + 0.015;
+      
+      // Drift & hover offsets based on middle/high frequency bands
+      const wobble = Math.sin(time * 1.5 + L * 0.5) * treble * 18 * DPR * (1 - ease);
+      const yShift = -110 * DPR * (1 - ease) + Math.sin(time * 2.0 + L) * mid * 6 * DPR;
+      
+      const themeAccent = getComputedStyle(document.body).getPropertyValue('--color-accent').trim();
+      
+      ctx.font = `700 ${size.toFixed(1)}px 'Space Grotesk', sans-serif`;
+      ctx.fillStyle = `rgba(${getRGBChannels(themeAccent)}, ${alpha})`;
+      ctx.fillText(word, cx + wobble, cy + yShift);
+    }
+  }
+
+  function getRGBChannels(colorString) {
+    // Utility to convert color strings like hex or rgb to comma separated channels
+    if (colorString.startsWith('#')) {
+      const r = parseInt(colorString.slice(1,3), 16);
+      const g = parseInt(colorString.slice(3,5), 16);
+      const b = parseInt(colorString.slice(5,7), 16);
+      return `${r}, ${g}, ${b}`;
+    }
+    if (colorString.startsWith('rgb')) {
+      return colorString.match(/\d+/g).slice(0,3).join(', ');
+    }
+    return "255, 255, 255";
+  }
+
+  // ---------- Main Frame Loop ----------
+  let currentWordIndex = -1;
+  let lastTimeVal = 0;
+
+  function renderFrame(nowMs) {
+    requestAnimationFrame(renderFrame);
+    
+    const time = nowMs / 1000;
+    const delta = time - lastTimeVal;
+    lastTimeVal = time;
+    
+    // Increment simulated uptime indicator
+    systemUptime += delta;
+    updateUptimeDisplay();
+
+    // Default audio properties
+    let bass = 0.05, mid = 0.05, treble = 0.05;
+    
+    if (playing && analyser) {
+      analyser.getByteFrequencyData(freqData);
+      analyser.getByteTimeDomainData(timeData);
+      
+      // Calculate frequency energy averages
+      bass = getAvgRange(freqData, 0, 8) / 255.0;
+      mid = getAvgRange(freqData, 8, 38) / 255.0;
+      treble = getAvgRange(freqData, 38, 120) / 255.0;
+      
+      // Simulate live system metrics
+      randomDeviation = (bass * 4.8 + Math.sin(time * 8.0) * 0.4).toFixed(2);
+      hypnosisFactor = Math.min(100.0, (hypnosisFactor * 0.97 + bass * 6.5)).toFixed(1);
+    } else {
+      // Idle system metrics fluctuations
+      randomDeviation = (Math.sin(time * 0.5) * 0.15 + 0.1).toFixed(2);
+      hypnosisFactor = (Math.abs(Math.sin(time * 0.2)) * 4.0).toFixed(1);
+    }
+
+    hudDeviation.textContent = randomDeviation + '%';
+    hudHypnosis.textContent = hypnosisFactor + '%';
+
+    // 1. Draw WebGL Background
+    if (gl) {
+      gl.clearColor(0.02, 0.02, 0.04, 1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      
+      // Bind relevant source texture
+      if (bgSource === 'webcam' && webcamStream && webcamVideo.readyState === webcamVideo.HAVE_CURRENT_DATA) {
+        updateGLTexture(webcamVideo);
+      }
+      
+      // Bind uniforms to fragment shader
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_time'), time);
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_bass'), bass);
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_mid'), mid);
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_treble'), treble);
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_glitch_chroma'), parseFloat(params.glitchChroma.value));
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_glitch_noise'), parseFloat(params.glitchNoise.value));
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_vortex_intensity'), parseFloat(params.vortexInt.value));
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_vortex_freq'), parseFloat(params.vortexFreq.value));
+      gl.uniform1f(gl.getUniformLocation(glProgram, 'u_vortex_speed'), parseFloat(params.vortexSpeed.value));
+      gl.uniform2f(gl.getUniformLocation(glProgram, 'u_resolution'), w, h);
+      
+      gl.drawArrays(gl.TRIANGLES, 0, 6);
+    }
+
+    // 2. Draw 2D Canvas Overlays
+    ctx.clearRect(0, 0, visCanvas.width, visCanvas.height);
+    
+    // Draw visualizer
+    const ampScale = parseFloat(params.audioSens.value);
+    drawRibbedWaveform(time, bass, mid, treble, ampScale);
+
+    // Typewriter Subtitle Sync & Depth stack overlay
+    let activeWord = '';
+    let progress = 0;
+
+    if (playing && schedule.length) {
+      const audioTime = audioCtx.currentTime - startedAt;
+      let activeIndex = -1;
+      
+      for (let i = 0; i < schedule.length; i++) {
+        if (schedule[i].t <= audioTime) {
+          activeIndex = i;
+        } else {
+          break;
+        }
+      }
+      
+      if (activeIndex >= 0) {
+        activeWord = schedule[activeIndex].word;
+        progress = audioTime - schedule[activeIndex].t;
+        
+        if (activeIndex !== currentWordIndex) {
+          currentWordIndex = activeIndex;
+          
+          // Apply active word subtitle
+          if (params.subtitleMode.value === 'bottom') {
+            subtitleText.textContent = activeWord;
+            subtitleText.style.transform = `scale(${1.15 + bass*0.1}) translateY(0px)`;
+            setTimeout(() => {
+              subtitleText.style.transform = 'scale(1) translateY(0px)';
+            }, 80);
+          } else {
+            subtitleText.textContent = '';
+          }
+        }
+      } else {
+        subtitleText.textContent = '';
+      }
+
+      // Draw word index counters
+      hudWordIndex.textContent = activeIndex >= 0 ? (activeIndex + 1) : '—';
+      hudTime.textContent = fmtTime(audioTime) + ' / ' + fmtTime(audioBuffer.duration);
+      scrubFill.style.width = Math.min(100, (audioTime / audioBuffer.duration) * 100) + '%';
+    } else {
+      hudWordIndex.textContent = '—';
+      subtitleText.textContent = '';
+    }
+
+    // Draw Legacy Canvas 3D Depth Stack words overlay
+    if (params.subtitleMode.value === '3d' && activeWord) {
+      drawCanvas3DWords(activeWord, progress, bass, mid, treble, time);
+    }
+  }
+
+  function updateUptimeDisplay() {
+    const hours = Math.floor(systemUptime / 3600);
+    const mins = Math.floor((systemUptime % 3600) / 60);
+    const secs = Math.floor(systemUptime % 60);
+    hudUptime.textContent = 
+      String(hours).padStart(2,'0') + ':' + 
+      String(mins).padStart(2,'0') + ':' + 
+      String(secs).padStart(2,'0');
+  }
+
+  // Run initialization
+  resize();
+  requestAnimationFrame(renderFrame);
+
+})();
+</script>
+</body>
+</html>
