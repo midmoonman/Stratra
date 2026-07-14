@@ -3174,17 +3174,7 @@
         } else {
           subtitleText.textContent = '';
         }
-      } else {
-        // No transcript — show a clean "Now Playing" caption with track name + elapsed time
-        const trackName = audioFilename.textContent.replace(/\.[^/.]+$/, '') || 'Audio';
-        const elapsed = fmtTime(Math.max(0, audioTime));
-        const total = fmtTime(audioBuffer.duration);
-        if (params.subtitleMode.value === 'bottom') {
-          subtitleText.textContent = `${trackName}  ·  ${elapsed} / ${total}`;
-          subtitleText.style.opacity = '0.75';
-          subtitleText.style.fontSize = '14px';
-        }
-      }
+
 
       // Update HUD scrub bar and time
       hudWordIndex.textContent = schedule.length ? (schedule.findIndex(s => s.word === activeWord) + 1 || '—') : '—';
