@@ -222,12 +222,26 @@
   }
   .speech-text {
     font-family: var(--font-header);
-    font-weight: 500;
-    font-size: 20px;
+    font-weight: 600;
+    font-size: 22px;
     color: var(--color-accent);
-    text-shadow: 0 2px 12px rgba(0,0,0,0.8), 0 0 15px rgba(var(--color-accent-rgb), 0.25);
-    letter-spacing: 0.05em;
+    text-shadow: 0 2px 16px rgba(0,0,0,0.9), 0 0 20px rgba(var(--color-accent-rgb), 0.3);
+    letter-spacing: 0.06em;
     line-height: 1.4;
+    transition: transform 0.08s ease, opacity 0.25s ease, font-size 0.2s ease;
+    padding: 8px 18px;
+    background: rgba(0,0,0,0.22);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border-radius: 8px;
+    border: 1px solid rgba(var(--color-accent-rgb), 0.12);
+    display: inline-block;
+    min-width: 60px;
+  }
+  body.light-mode .speech-text {
+    text-shadow: 0 1px 8px rgba(0,0,0,0.18);
+    background: rgba(255,255,255,0.55);
+    border-color: rgba(var(--color-accent-rgb), 0.18);
   }
 
   /* Circular Depth Stack Words (Legacy option, drawing dynamically on canvas) */
@@ -2025,7 +2039,6 @@
 
   async function handleAudioFile(file) {
     audioFilename.textContent = file.name;
-    idlePrompt.textContent = '[ Listening to Audio Signal... ]';
     
     try {
       const arrayBuf = await file.arrayBuffer();
@@ -2035,13 +2048,12 @@
       
       // Decode audio asynchronously
       audioBuffer = await audioCtx.decodeAudioData(arrayBuf);
-      idlePrompt.textContent = '[ Running Onset Peak Analysis... ]';
       
-      // Run offline peak/onset detection for subtitles
+      // Run offline peak/onset detection for subtitle sync
       await new Promise(r => setTimeout(r, 10));
       onsets = analyzeOnsets(audioBuffer);
       
-      // Rebuild scheduling if words exist
+      // Rebuild schedule if transcript text exists
       updateTranscriptSchedule();
       
       playBtn.disabled = false;
@@ -2050,17 +2062,16 @@
       liveText.textContent = 'LINK CONNECTED';
       idlePrompt.classList.add('hidden');
       
-      // Flash live feed status
       flashLiveIndicator();
 
-      // Automatically start playback immediately upon file select
+      // Auto-play immediately — ensure context is running
       if (audioCtx.state === 'suspended') {
-        audioCtx.resume();
+        await audioCtx.resume();
       }
       startPlayback(0);
       liveText.textContent = 'LIVE FEED LINK';
     } catch(err) {
-      console.error(err);
+      console.error('Audio load error:', err);
       idlePrompt.textContent = '[ Connection Failed: Corrupt Audio ]';
       playBtn.disabled = true;
       restartBtn.disabled = true;
@@ -3070,56 +3081,65 @@
     const ampScale = parseFloat(params.audioSens.value);
     drawRibbedWaveform(time, bass, mid, treble, ampScale);
 
-    // Typewriter Subtitle Sync & Depth stack overlay
+    // Typewriter Subtitle Sync & caption display
     let activeWord = '';
     let progress = 0;
 
-    if (playing && schedule.length) {
+    if (playing && audioBuffer) {
       const audioTime = audioCtx.currentTime - startedAt;
-      let activeIndex = -1;
-      
-      for (let i = 0; i < schedule.length; i++) {
-        if (schedule[i].t <= audioTime) {
-          activeIndex = i;
-        } else {
-          break;
+
+      if (schedule.length) {
+        // Schedule exists — find the active word from timing
+        let activeIndex = -1;
+        for (let i = 0; i < schedule.length; i++) {
+          if (schedule[i].t <= audioTime) { activeIndex = i; }
+          else { break; }
         }
-      }
-      
-      if (activeIndex >= 0) {
-        activeWord = schedule[activeIndex].word;
-        progress = audioTime - schedule[activeIndex].t;
-        
-        if (activeIndex !== currentWordIndex) {
-          currentWordIndex = activeIndex;
-          
-          // Trigger shake impact on word onset (beat peak)
-          shakeEnergy = 1.0;
-          
-          // Apply active word subtitle
-          if (params.subtitleMode.value === 'bottom') {
-            subtitleText.textContent = activeWord;
-            subtitleText.style.transform = `scale(${1.15 + bass*0.1}) translateY(0px)`;
-            setTimeout(() => {
-              subtitleText.style.transform = 'scale(1) translateY(0px)';
-            }, 80);
-          } else {
-            subtitleText.textContent = '';
+
+        if (activeIndex >= 0) {
+          activeWord = schedule[activeIndex].word;
+          progress = audioTime - schedule[activeIndex].t;
+
+          if (activeIndex !== currentWordIndex) {
+            currentWordIndex = activeIndex;
+            shakeEnergy = 1.0;
+
+            if (params.subtitleMode.value === 'bottom') {
+              subtitleText.textContent = activeWord;
+              subtitleText.style.opacity = '1';
+              subtitleText.style.transform = `scale(${1.12 + bass * 0.08}) translateY(0px)`;
+              setTimeout(() => { subtitleText.style.transform = 'scale(1) translateY(0px)'; }, 80);
+            } else {
+              subtitleText.textContent = '';
+            }
           }
+        } else {
+          subtitleText.textContent = '';
         }
       } else {
-        subtitleText.textContent = '';
+        // No transcript — show a clean "Now Playing" caption with track name + elapsed time
+        const trackName = audioFilename.textContent.replace(/\.[^/.]+$/, '') || 'Audio';
+        const elapsed = fmtTime(Math.max(0, audioTime));
+        const total = fmtTime(audioBuffer.duration);
+        if (params.subtitleMode.value === 'bottom') {
+          subtitleText.textContent = `${trackName}  ·  ${elapsed} / ${total}`;
+          subtitleText.style.opacity = '0.75';
+          subtitleText.style.fontSize = '14px';
+        }
       }
 
-      // Draw word index counters
-      hudWordIndex.textContent = activeIndex >= 0 ? (activeIndex + 1) : '—';
+      // Update HUD scrub bar and time
+      hudWordIndex.textContent = schedule.length ? (schedule.findIndex(s => s.word === activeWord) + 1 || '—') : '—';
+      const displayTime = Math.max(0, audioTime);
       if (!isDraggingScrub) {
-        hudTime.textContent = fmtTime(audioTime) + ' / ' + fmtTime(audioBuffer.duration);
-        scrubFill.style.width = Math.min(100, (audioTime / audioBuffer.duration) * 100) + '%';
+        hudTime.textContent = fmtTime(displayTime) + ' / ' + fmtTime(audioBuffer.duration);
+        scrubFill.style.width = Math.min(100, (displayTime / audioBuffer.duration) * 100) + '%';
       }
     } else {
       hudWordIndex.textContent = '—';
       subtitleText.textContent = '';
+      subtitleText.style.fontSize = '';
+      subtitleText.style.opacity = '';
     }
 
     // Draw Legacy Canvas 3D Depth Stack words overlay
