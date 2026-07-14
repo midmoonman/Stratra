@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=JetBrains+Mono:wght@400;700&family=Creepster&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;700&family=Creepster&display=swap" rel="stylesheet">
 <style>
   :root {
     /* Theme color variables */
@@ -17,7 +17,7 @@
     --color-shadow: #202025;
     --line: rgba(255, 255, 255, 0.12);
     --line-soft: rgba(255, 255, 255, 0.05);
-    --font-header: 'Space Grotesk', sans-serif;
+    --font-header: 'Poppins', sans-serif;
     --font-mono: 'JetBrains Mono', monospace;
   }
 
@@ -73,7 +73,7 @@
     margin: 0; padding: 0; height: 100%;
     background-color: var(--bg-void);
     color: var(--color-accent);
-    font-family: var(--font-mono);
+    font-family: var(--font-header);
     overflow: hidden;
     -webkit-font-smoothing: antialiased;
     transition: background-color 0.5s ease, color 0.5s ease;
@@ -470,9 +470,40 @@
   .ambient-idle-msg.hidden {
     opacity: 0;
   }
+
+  /* Fullscreen Drag & Drop Overlay */
+  .drag-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, 0.85);
+    border: 3px dashed var(--color-accent);
+    margin: 16px;
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+    transition: background 0.3s ease;
+  }
+  .drag-overlay.active {
+    display: flex;
+  }
+  .drag-overlay h2 {
+    font-family: var(--font-header);
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: var(--color-accent);
+    text-shadow: 0 0 15px rgba(var(--color-accent-rgb), 0.5);
+    text-transform: uppercase;
+  }
 </style>
 </head>
 <body class="theme-monochrome">
+
+<!-- Fullscreen Drag & Drop Overlay -->
+<div class="drag-overlay" id="dragOverlay">
+  <h2>[ DROP AUDIO SIGNAL TO ESTABLISH LINK ]</h2>
+</div>
 
 <!-- Dual Canvas Backdrop -->
 <canvas id="gl-canvas"></canvas>
@@ -563,7 +594,15 @@
 
       <div class="control-group textarea-group">
         <label>AI Dialogue Transcript (Synced to Peaks)</label>
-        <textarea id="transcriptInput" placeholder="Paste or type the dialogue here... Each word will sync to an audio peak for typewriter display."></textarea>
+        <textarea id="transcriptInput" placeholder="Paste or type the dialogue here... Each segment will sync to an audio peak for typewriter display."></textarea>
+      </div>
+
+      <div class="control-group select-group">
+        <label>Subtitle Sync Segmenting</label>
+        <select id="subtitleSegmentSelect">
+          <option value="word" selected>Word by Word (Rapid)</option>
+          <option value="phrase">Line by Line / Sentence</option>
+        </select>
       </div>
     </div>
 
@@ -672,6 +711,36 @@
         <select id="subtitleModeSelect">
           <option value="bottom" selected>Typewriter Subtitle</option>
           <option value="3d">Canvas 3D Depth Stack</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- SECTION 4: Audio Player Features -->
+    <div class="settings-section">
+      <h3>4. Audio Player Controls</h3>
+
+      <div class="control-group">
+        <label>Volume <span class="val" id="val-volume">100%</span></label>
+        <input type="range" id="param-volume" min="0" max="100" step="1" value="100">
+      </div>
+
+      <div class="control-group select-group">
+        <label>Playback Speed</label>
+        <select id="param-speed">
+          <option value="0.5">0.5x (Super Slow)</option>
+          <option value="0.75">0.75x (Slow / Deep)</option>
+          <option value="1.0" selected>1.0x (Normal)</option>
+          <option value="1.25">1.25x (Fast)</option>
+          <option value="1.5">1.5x (Double Speed)</option>
+          <option value="2.0">2.0x (Double Speed)</option>
+        </select>
+      </div>
+
+      <div class="control-group select-group">
+        <label>Loop Audio Signal</label>
+        <select id="param-loop">
+          <option value="false">Play Once</option>
+          <option value="true">Continuous Loop</option>
         </select>
       </div>
     </div>
@@ -842,12 +911,16 @@
   let audioCtx = null;
   let audioBuffer = null;
   let sourceNode = null;
+  let gainNode = null; // Volume GainNode
   let analyser = null;
   let freqData = null;
   let timeData = null;
   let onsets = [];
   let schedule = [];
   let words = [];
+  
+  // Persistent array to hold LERP values for visual disc sizes
+  let visualAmps = new Float32Array(300);
 
   let playing = false;
   let startedAt = 0;
@@ -883,7 +956,8 @@
     shadows: document.getElementById('shadowSelect'),
     spindle: document.getElementById('spindleSelect'),
     subtitleMode: document.getElementById('subtitleModeSelect'),
-    adaptiveColor: document.getElementById('adaptiveColorSelect')
+    adaptiveColor: document.getElementById('adaptiveColorSelect'),
+    volume: document.getElementById('param-volume') // Added to auto-bind value text
   };
 
   // Add event listeners to display current parameter values
@@ -1114,11 +1188,36 @@
     }
   }
 
+  // ---------- Drag & Drop Audio Upload ----------
+  const dragOverlay = document.getElementById('dragOverlay');
+  window.addEventListener('dragover', (e) => {
+    e.preventDefault();
+  });
+  window.addEventListener('dragenter', (e) => {
+    e.preventDefault();
+    dragOverlay.classList.add('active');
+  });
+  window.addEventListener('dragleave', (e) => {
+    if (e.clientX <= 0 || e.clientY <= 0 || e.clientX >= window.innerWidth || e.clientY >= window.innerHeight) {
+      dragOverlay.classList.remove('active');
+    }
+  });
+  window.addEventListener('drop', async (e) => {
+    e.preventDefault();
+    dragOverlay.classList.remove('active');
+    const file = e.dataTransfer.files[0];
+    if (file && file.type.startsWith('audio/')) {
+      handleAudioFile(file);
+    }
+  });
+
   // ---------- Audio Input & Buffering ----------
   audioInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-    
+    if (file) handleAudioFile(file);
+  });
+
+  async function handleAudioFile(file) {
     audioFilename.textContent = file.name;
     idlePrompt.textContent = '[ Listening to Audio Signal... ]';
     
@@ -1137,9 +1236,7 @@
       onsets = analyzeOnsets(audioBuffer);
       
       // Rebuild scheduling if words exist
-      if (words.length) {
-        schedule = buildSchedule(words, audioBuffer.duration, onsets);
-      }
+      updateTranscriptSchedule();
       
       playBtn.disabled = false;
       restartBtn.disabled = false;
@@ -1155,17 +1252,32 @@
       playBtn.disabled = true;
       restartBtn.disabled = true;
     }
-  });
+  }
 
-  transcriptInput.addEventListener('input', () => {
+  // Update schedule based on transcript changes or segmenting mode
+  function updateTranscriptSchedule() {
     const txt = transcriptInput.value.trim();
-    words = txt.length ? txt.split(/\s+/) : [];
-    hudTotalWords.textContent = words.length;
+    const mode = document.getElementById('subtitleSegmentSelect').value;
     
+    if (!txt.length) {
+      words = [];
+    } else if (mode === 'phrase') {
+      // Split by commas, periods, newlines, or semicolons
+      words = txt.split(/[\n\.,;]+/).map(s => s.trim()).filter(s => s.length > 0);
+    } else {
+      // Split by whitespace
+      words = txt.split(/\s+/);
+    }
+    
+    hudTotalWords.textContent = words.length;
     if (audioBuffer) {
       schedule = buildSchedule(words, audioBuffer.duration, onsets);
     }
-  });
+  }
+
+  transcriptInput.addEventListener('input', updateTranscriptSchedule);
+  document.getElementById('subtitleSegmentSelect').addEventListener('change', updateTranscriptSchedule);
+
 
   function flashLiveIndicator() {
     const tag = document.querySelector('.hud-live-tag');
@@ -1290,17 +1402,35 @@
       timeData = new Uint8Array(analyser.frequencyBinCount);
     }
     
+    if (!gainNode) {
+      gainNode = audioCtx.createGain();
+    }
+    
+    // Apply initial volume
+    const volVal = parseInt(params.volume.value) / 100;
+    gainNode.gain.setValueAtTime(volVal, audioCtx.currentTime);
+    
+    // Apply loop state
+    const loopVal = document.getElementById('param-loop').value === 'true';
+    sourceNode.loop = loopVal;
+    
+    // Apply playback speed rate
+    const speedVal = parseFloat(document.getElementById('param-speed').value);
+    sourceNode.playbackRate.setValueAtTime(speedVal, audioCtx.currentTime);
+    
+    // Routing: Source -> Analyser -> Gain (Volume) -> Destination
     sourceNode.connect(analyser);
-    analyser.connect(audioCtx.destination);
+    analyser.connect(gainNode);
+    gainNode.connect(audioCtx.destination);
     
     sourceNode.start(0, offset);
-    startedAt = audioCtx.currentTime - offset;
+    startedAt = audioCtx.currentTime - offset / speedVal; // Scale startedAt by playback rate to keep time elapsed correct!
     playing = true;
     
     playBtn.textContent = '⏸ Disconnect';
     
     sourceNode.onended = () => {
-      if (playing) {
+      if (playing && !sourceNode.loop) {
         playing = false;
         pausedOffset = 0;
         playBtn.textContent = '▶ Connect';
@@ -1309,6 +1439,32 @@
     };
   }
 
+  // Dynamic Volume Adjustment
+  document.getElementById('param-volume').addEventListener('input', (e) => {
+    const vol = parseInt(e.target.value) / 100;
+    if (gainNode && audioCtx) {
+      gainNode.gain.setValueAtTime(vol, audioCtx.currentTime);
+    }
+  });
+
+  // Dynamic Playback Speed Adjustment
+  document.getElementById('param-speed').addEventListener('change', (e) => {
+    const speed = parseFloat(e.target.value);
+    if (playing && audioCtx) {
+      // Pause and restart at current elapsed offset to scale time correctly
+      const elapsed = (audioCtx.currentTime - startedAt) * sourceNode.playbackRate.value;
+      startPlayback(elapsed);
+    }
+  });
+
+  // Dynamic Loop Adjustment
+  document.getElementById('param-loop').addEventListener('change', (e) => {
+    const loopVal = e.target.value === 'true';
+    if (sourceNode) {
+      sourceNode.loop = loopVal;
+    }
+  });
+
   playBtn.addEventListener('click', () => {
     if (!audioBuffer) return;
     if (audioCtx.state === 'suspended') {
@@ -1316,7 +1472,8 @@
     }
     
     if (playing) {
-      pausedOffset = audioCtx.currentTime - startedAt;
+      const speed = sourceNode.playbackRate.value;
+      pausedOffset = (audioCtx.currentTime - startedAt) * speed;
       try { sourceNode.stop(); } catch(e) {}
       playing = false;
       playBtn.textContent = '▶ Connect';
@@ -1449,6 +1606,14 @@
       }
     }
 
+    // Buttery Smooth Waveform Interpolation (LERP)
+    for (let i = 0; i < countSetting; i++) {
+      const targetAmp = amplitudes[i];
+      if (visualAmps[i] === undefined) visualAmps[i] = targetAmp;
+      // 0.14 lerp factor yields perfect cinematic floating movement
+      visualAmps[i] += (targetAmp - visualAmps[i]) * 0.14;
+    }
+
     // Retrieve styling parameters
     const shadowType = params.shadows.value;
     const ribDensity = params.ribDensity.value;
@@ -1459,11 +1624,11 @@
     
     // Render Left Half
     for (let i = 0; i < centerIndex; i++) {
-      renderDisc(i, startX + i * spacingSetting, amplitudes[i]);
+      renderDisc(i, startX + i * spacingSetting, visualAmps[i]);
     }
     // Render Right Half (drawn backwards to center)
     for (let i = countSetting - 1; i >= centerIndex; i--) {
-      renderDisc(i, startX + i * spacingSetting, amplitudes[i]);
+      renderDisc(i, startX + i * spacingSetting, visualAmps[i]);
     }
 
     // Individual Disc Drawing Function
@@ -1593,7 +1758,7 @@
       
       const themeAccent = getComputedStyle(document.body).getPropertyValue('--color-accent').trim();
       
-      ctx.font = `700 ${size.toFixed(1)}px 'Space Grotesk', sans-serif`;
+      ctx.font = `700 ${size.toFixed(1)}px 'Poppins', sans-serif`;
       ctx.fillStyle = `rgba(${getRGBChannels(themeAccent)}, ${alpha})`;
       ctx.fillText(word, cx + wobble, cy + yShift);
     }
