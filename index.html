@@ -1329,7 +1329,7 @@
       this.colorHue = Math.random() < 0.18 ? 1 : 0; // 1 = theme accent, 0 = white
     }
     
-    update(w, h, bass, mid, treble, time, style, opacity) {
+    update(w, h, bass, mid, treble, time, style, opacity, idleBrandCurrent) {
       // Swarm speed accelerates on treble frequency energy
       this.angle += this.speed * (1.0 + treble * 1.6);
       
@@ -1339,12 +1339,16 @@
       const midX = w / 2;
       const midY = h / 2;
       
+      // Spindle bending calculations for particles
+      const normZ = this.z / (w * 0.41);
+      const spindleCurve = Math.sin(normZ * Math.PI * 1.15) * 75 * idleBrandCurrent;
+      
       const cosA = Math.cos(this.angle);
       const sinA = Math.sin(this.angle);
       
       // Orthographic 3D projection squashed vertically to look perspective tilted
       this.x = midX + this.z + cosA * 10;
-      this.y = midY + this.yOffset + sinA * dynamicRadius * 0.36;
+      this.y = midY + spindleCurve + this.yOffset + sinA * dynamicRadius * 0.36;
       
       // Interpolate fade based on master toggle opacity
       this.alpha += (this.maxAlpha * opacity - this.alpha) * 0.08;
@@ -1406,6 +1410,8 @@
   let shakeOffsetX = 0.0;
   let shakeOffsetY = 0.0;
   let lastBass = 0.0;
+  let idleBrandTarget = 1.0;
+  let idleBrandCurrent = 1.0;
 
   let playing = false;
   let startedAt = 0;
@@ -1572,30 +1578,6 @@
     const cx = texWidth / 2;
     const cy = texHeight / 2;
     
-    // Draw a stylized holographic 'S' logo in the center for the STRATRA brand
-    tCtx.save();
-    tCtx.font = '800 220px "Outfit", "Inter", sans-serif';
-    tCtx.textAlign = 'center';
-    tCtx.textBaseline = 'middle';
-    
-    // Outer soft glow aura
-    tCtx.shadowColor = 'rgba(255, 255, 255, 0.4)';
-    tCtx.shadowBlur = 30;
-    tCtx.fillStyle = 'rgba(255, 255, 255, 0.02)';
-    tCtx.fillText('S', cx, cy);
-    
-    // Mid glow stroke
-    tCtx.shadowBlur = 15;
-    tCtx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
-    tCtx.lineWidth = 4;
-    tCtx.strokeText('S', cx, cy);
-    
-    // Crisp inner core fill
-    tCtx.shadowBlur = 0;
-    tCtx.fillStyle = 'rgba(255, 255, 255, 0.12)';
-    tCtx.fillText('S', cx, cy);
-    tCtx.restore();
-
     // Draw circular soft concentric ripples matching user's visual style
     const steps = 14;
     const spacing = 45;
@@ -2134,7 +2116,7 @@
     let sum = 0, count = 0;
     for (let i = lo; i < hi && i < data.length; i++) {
       sum += data[i];
-      count++;
+    count++;
     }
     return count ? (sum / count) : 0;
   }
@@ -2178,7 +2160,8 @@
     
     if (pOpacity > 0.01) {
       for (let i = 0; i < activeParticleCount; i++) {
-        particles[i].update(width / DPR, height / DPR, bass, mid, treble, time, pStyle, pOpacity);
+        // Pass idleBrandCurrent so particles follow curved spindle shape!
+        particles[i].update(width / DPR, height / DPR, bass, mid, treble, time, pStyle, pOpacity, idleBrandCurrent);
       }
       ctx.save();
       const accentRGBVal = getRGBChannels(themeAccent);
@@ -2190,23 +2173,42 @@
       ctx.restore();
     }
 
-    // 2. Draw central structural Spindle Rod
+    // 2. Draw central structural Spindle Rod (curved with the visualizer S-brand layout)
     if (params.spindle.value === 'true') {
-      const spindleGrad = ctx.createLinearGradient(startX - 20, midY - 3 * DPR, startX + waveLength + 20, midY + 3 * DPR);
+      ctx.save();
+      ctx.beginPath();
+      ctx.lineWidth = 3 * DPR;
       
+      const spindleGrad = ctx.createLinearGradient(startX - 20, midY, startX + waveLength + 20, midY);
       spindleGrad.addColorStop(0, 'rgba(0,0,0,0.6)');
       spindleGrad.addColorStop(0.3, accentRGB);
       spindleGrad.addColorStop(0.5, 'rgba(255,255,255,0.9)');
       spindleGrad.addColorStop(0.7, accentRGB);
       spindleGrad.addColorStop(1, 'rgba(0,0,0,0.6)');
       
-      ctx.fillStyle = spindleGrad;
+      ctx.strokeStyle = spindleGrad;
       
-      // Draw shadow under spindle
+      // Draw shadow under spindle path
       ctx.shadowColor = 'rgba(0,0,0,0.7)';
       ctx.shadowBlur = 6 * DPR;
-      ctx.fillRect(startX - 20, midY - 1.5 * DPR, waveLength + 40, 3 * DPR);
-      ctx.shadowBlur = 0; // Reset
+      
+      // Traverse all discs and build the bent spindle line path!
+      for (let i = 0; i < countSetting; i++) {
+        const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
+        const sOffset = Math.sin(normX * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
+        const discY = midY + sOffset;
+        const discX = startX + i * spacingSetting;
+        
+        if (i === 0) {
+          ctx.moveTo(discX - 20, discY);
+        }
+        ctx.lineTo(discX, discY);
+        if (i === countSetting - 1) {
+          ctx.lineTo(discX + 20, discY);
+        }
+      }
+      ctx.stroke();
+      ctx.restore();
     }
 
     // Prepare frequency bins mapped along visualizer length
@@ -2247,14 +2249,18 @@
     
     // Render Left Half
     for (let i = 0; i < centerIndex; i++) {
-      renderDisc(i, startX + i * spacingSetting, visualAmps[i]);
+      const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
+      const discY = midY + Math.sin(normX * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
+      renderDisc(i, startX + i * spacingSetting, visualAmps[i], discY);
       if (i > 0 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
         drawWireframeConnections(i - 1, i);
       }
     }
     // Render Right Half (drawn backwards to center)
     for (let i = countSetting - 1; i >= centerIndex; i--) {
-      renderDisc(i, startX + i * spacingSetting, visualAmps[i]);
+      const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
+      const discY = midY + Math.sin(normX * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
+      renderDisc(i, startX + i * spacingSetting, visualAmps[i], discY);
       if (i < countSetting - 1 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
         drawWireframeConnections(i, i + 1);
       }
@@ -2283,6 +2289,12 @@
       const amp1 = visualAmps[idx1];
       const amp2 = visualAmps[idx2];
       
+      const normX1 = (idx1 - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
+      const normX2 = (idx2 - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
+      
+      const discY1 = midY + Math.sin(normX1 * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
+      const discY2 = midY + Math.sin(normX2 * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
+      
       const ry1 = (10 * DPR) + (amp1 * 200 * DPR);
       const ry2 = (10 * DPR) + (amp2 * 200 * DPR);
       const rx = widthSetting;
@@ -2296,10 +2308,10 @@
         const cosA = Math.cos(angle);
         const sinA = Math.sin(angle);
         
-        const cy1 = midY + sinA * ry1;
+        const cy1 = discY1 + sinA * ry1;
         const cx1 = x1 + cosA * rx * 0.15;
         
-        const cy2 = midY + sinA * ry2;
+        const cy2 = discY2 + sinA * ry2;
         const cx2 = x2 + cosA * rx * 0.15;
         
         ctx.beginPath();
@@ -2358,10 +2370,18 @@
       }
     }
 
-    // Individual Disc Drawing Function
-    function renderDisc(index, x, amp) {
+    // Individual Disc Drawing Function (now supports curved centers & calligraphic thickness)
+    function renderDisc(index, x, amp, discY) {
       const rx = widthSetting;
-      const ry = (10 * DPR) + (amp * 200 * DPR);
+      
+      // Calculate calligraphic thickness if in idle S-brand mode
+      const normX = (index - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
+      const brandThickness = Math.abs(Math.sin(normX * Math.PI * 1.15));
+      const brandRy = (10 * DPR) + (8 * DPR) + brandThickness * 28 * DPR;
+      
+      const targetRy = (10 * DPR) + (amp * 200 * DPR);
+      // LERP target height between active wave and idle S thickness
+      const ry = targetRy + (brandRy - targetRy) * idleBrandCurrent;
       
       let discColor = themeAccent;
       let shadowColor = themeShadow;
@@ -2370,7 +2390,7 @@
       if (adaptiveColor) {
         try {
           const sampleX = Math.floor((x / width) * w);
-          const sampleY = Math.floor(h / 2);
+          const sampleY = Math.floor(discY / height * h); // sample adaptive color along curve!
           const pixels = new Uint8Array(4);
           
           if (gl) {
@@ -2402,23 +2422,23 @@
           // Beautiful multi-layered vector shadows for soft look with 0% compositing lag!
           ctx.fillStyle = `rgba(0,0,0,${0.15 * shadowAlphaScale})`;
           ctx.beginPath();
-          drawMorphedPath(ctx, x + 5 * DPR, midY + 6 * DPR, rx * 1.15, ry + 2 * DPR, geometryCurrent, geomType, index, time);
+          drawMorphedPath(ctx, x + 5 * DPR, discY + 6 * DPR, rx * 1.15, ry + 2 * DPR, geometryCurrent, geomType, index, time);
           ctx.fill();
           
           ctx.fillStyle = `rgba(0,0,0,${0.35 * shadowAlphaScale})`;
           ctx.beginPath();
-          drawMorphedPath(ctx, x + 2 * DPR, midY + 3 * DPR, rx * 1.05, ry + 1 * DPR, geometryCurrent, geomType, index, time);
+          drawMorphedPath(ctx, x + 2 * DPR, discY + 3 * DPR, rx * 1.05, ry + 1 * DPR, geometryCurrent, geomType, index, time);
           ctx.fill();
         } else {
           ctx.fillStyle = `rgba(0,0,0,${0.85 * shadowAlphaScale})`;
           ctx.beginPath();
-          drawMorphedPath(ctx, x + 3 * DPR, midY + 4 * DPR, rx, ry, geometryCurrent, geomType, index, time);
+          drawMorphedPath(ctx, x + 3 * DPR, discY + 4 * DPR, rx, ry, geometryCurrent, geomType, index, time);
           ctx.fill();
         }
       }
 
       // Main Disc Body 3D Gradient Filling
-      const grad = ctx.createLinearGradient(x - rx, midY - ry, x + rx * 0.5, midY + ry * 0.5);
+      const grad = ctx.createLinearGradient(x - rx, discY - ry, x + rx * 0.5, discY + ry * 0.5);
       const fillOpacity = (isAltGeom && geomType === 'wireframe') ? (1.0 - geometryCurrent * 0.82) : 1.0;
       const shadowRGBVal = getRGBChannels(shadowColor);
       
@@ -2429,7 +2449,7 @@
       
       ctx.fillStyle = grad;
       ctx.beginPath();
-      drawMorphedPath(ctx, x, midY, rx, ry, geometryCurrent, geomType, index, time);
+      drawMorphedPath(ctx, x, discY, rx, ry, geometryCurrent, geomType, index, time);
       ctx.fill();
 
       // Draw concentric grooves (skipped in wireframe/segmented to keep structure clean)
@@ -2450,12 +2470,12 @@
           
           ctx.strokeStyle = `rgba(0,0,0,${0.22 * grooveOpacity})`;
           ctx.beginPath();
-          drawMorphedPath(ctx, x, midY, irx, iry, geometryCurrent, geomType, index, time);
+          drawMorphedPath(ctx, x, discY, irx, iry, geometryCurrent, geomType, index, time);
           ctx.stroke();
 
           ctx.strokeStyle = `rgba(255,255,255,${0.09 * grooveOpacity})`;
           ctx.beginPath();
-          drawMorphedPath(ctx, x, midY, irx, iry, geometryCurrent, geomType, index, time);
+          drawMorphedPath(ctx, x, discY, irx, iry, geometryCurrent, geomType, index, time);
           ctx.stroke();
         }
       }
@@ -2474,7 +2494,7 @@
           const startA = rot + s * span;
           const endA = startA + arcLen;
           ctx.beginPath();
-          ctx.ellipse(x, midY, rx, ry, 0, startA, endA);
+          ctx.ellipse(x, discY, rx, ry, 0, startA, endA);
           ctx.stroke();
         }
       }
@@ -2484,7 +2504,7 @@
       ctx.strokeStyle = `rgba(0,0,0,${0.45 * strokeOpacity})`;
       ctx.lineWidth = 0.5 * DPR;
       ctx.beginPath();
-      drawMorphedPath(ctx, x, midY, rx, ry, geometryCurrent, geomType, index, time);
+      drawMorphedPath(ctx, x, discY, rx, ry, geometryCurrent, geomType, index, time);
       ctx.stroke();
     }
   }
@@ -2601,6 +2621,15 @@
       // Idle system metrics fluctuations
       randomDeviation = (Math.sin(time * 0.5) * 0.15 + 0.1).toFixed(2);
       hypnosisFactor = (Math.abs(Math.sin(time * 0.2)) * 4.0).toFixed(1);
+    }
+
+    // Brand "S" morph state controller
+    const audioEnergy = (playing && analyser) ? (bass + mid + treble) / 3 : 0.0;
+    idleBrandTarget = (!playing || audioEnergy < 0.035) ? 1.0 : 0.0;
+    if (idleBrandTarget === 0.0) {
+      idleBrandCurrent += (0.0 - idleBrandCurrent) * 0.16; // Snap back fast on drop
+    } else {
+      idleBrandCurrent += (1.0 - idleBrandCurrent) * 0.055; // Curve into S shape slowly
     }
 
     hudDeviation.textContent = randomDeviation + '%';
