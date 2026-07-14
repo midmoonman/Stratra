@@ -1410,11 +1410,11 @@
     }
     
     update(w, h, bass, mid, treble, time, style, opacity, idleBrandCurrent) {
-      // Swarm speed accelerates on treble frequency energy
-      this.angle += this.speed * (1.0 + treble * 1.6);
+      // Swarm speed accelerates on treble frequency energy and transition burst energy
+      this.angle += this.speed * (1.0 + treble * 1.6 + particleBurstEnergy * 7.5);
       
-      // Bass peaks contract orbital radius
-      const dynamicRadius = this.radius * (1.0 - bass * 0.15);
+      // Bass peaks contract orbital radius, while transition burst expands it dramatically outwards
+      const dynamicRadius = this.radius * (1.0 - bass * 0.15 + particleBurstEnergy * 2.8);
       
       const midX = w / 2;
       const midY = h / 2;
@@ -1457,12 +1457,17 @@
       const cosA = Math.cos(this.angle);
       const sinA = Math.sin(this.angle);
       
-      // Orthographic 3D projection orbiting particles
-      this.x = spindleX + cosA * 8;
-      this.y = spindleY + this.yOffset + sinA * dynamicRadius * 0.36;
+      // Add a high-frequency chaotic wiggle/expansion during transitions
+      const burstWiggleX = (Math.sin(this.angle * 4.0) * 35 * particleBurstEnergy);
+      const burstWiggleY = (Math.cos(this.angle * 4.0) * 35 * particleBurstEnergy);
       
-      // Interpolate fade based on master toggle opacity
-      this.alpha += (this.maxAlpha * opacity - this.alpha) * 0.08;
+      // Orthographic 3D projection orbiting particles
+      this.x = spindleX + cosA * 8 + burstWiggleX;
+      this.y = spindleY + this.yOffset + sinA * dynamicRadius * 0.36 + burstWiggleY;
+      
+      // Boost opacity and target alpha during active bursts
+      const targetAlpha = Math.min(1.0, this.maxAlpha * opacity + particleBurstEnergy * 0.65);
+      this.alpha += (targetAlpha - this.alpha) * 0.08;
     }
     
     draw(ctx, accentRGB, style, DPR) {
@@ -1472,12 +1477,13 @@
         ? `rgba(${accentRGB}, ${this.alpha})` 
         : `rgba(255, 255, 255, ${this.alpha * 0.65})`;
       
+      const sizeMultiplier = 1.0 + particleBurstEnergy * 2.5;
       if (style === 'glitch') {
-        const s = this.size * 1.5 * DPR;
+        const s = this.size * 1.5 * DPR * sizeMultiplier;
         ctx.fillRect(this.x * DPR - s/2, this.y * DPR - s/2, s, s);
       } else {
         ctx.beginPath();
-        ctx.arc(this.x * DPR, this.y * DPR, this.size * DPR, 0, Math.PI * 2);
+        ctx.arc(this.x * DPR, this.y * DPR, this.size * DPR * sizeMultiplier, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -1523,6 +1529,8 @@
   let lastBass = 0.0;
   let idleBrandTarget = 1.0;
   let idleBrandCurrent = 1.0;
+  let lastBrandTarget = 1.0;
+  let particleBurstEnergy = 0.0;
 
   let playing = false;
   let startedAt = 0;
@@ -2310,7 +2318,36 @@
       const brandX = (width - wordWidth) / 2 + (k + 0.5) * w_cell + (pt.lx - 0.5) * w_cell * 0.72 + floatX;
       const brandY = midY + pt.ly * wordHeight * 0.5 + floatY;
       
-      return { brandX, brandY };
+    }
+
+    // 3D perspective spin rotation during morph transitions
+    function get3DProjection(rx, ry, idx) {
+      const transitionFactor = Math.sin(idleBrandCurrent * Math.PI);
+      if (transitionFactor < 0.001) {
+        return { x: rx, y: ry, scale: 1.0 };
+      }
+      
+      const cx = width / 2;
+      const cy = midY;
+      
+      // helical twist
+      const spinAngle = transitionFactor * Math.PI * 0.85 + (idx / countSetting) * Math.PI * 0.45;
+      
+      const dx = rx - cx;
+      const dy = ry - cy;
+      
+      const cosR = Math.cos(spinAngle);
+      const sinR = Math.sin(spinAngle);
+      
+      const rx_3d = dx * cosR;
+      const rz_3d = dx * sinR;
+      
+      const perspective = 380 / (380 + rz_3d);
+      
+      const px = cx + rx_3d * perspective;
+      const py = cy + dy * perspective + sinR * 25 * DPR * transitionFactor;
+      
+      return { x: px, y: py, scale: perspective };
     }
 
     // 2. Draw central structural Spindle Rod (curved with the visualizer S-T-R-A-T-R-A layout)
@@ -2342,12 +2379,13 @@
         const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
         const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
         
+        const proj = get3DProjection(discX, discY, i);
         const isStartOfLetter = (i % discsPerLetter === 0);
         
         if (i === 0 || (isStartOfLetter && idleBrandCurrent > 0.01)) {
-          ctx.moveTo(discX, discY);
+          ctx.moveTo(proj.x, proj.y);
         } else {
-          ctx.lineTo(discX, discY);
+          ctx.lineTo(proj.x, proj.y);
         }
       }
       ctx.stroke();
@@ -2399,7 +2437,9 @@
       const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
       const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
       
-      renderDisc(i, discX, discY, visualAmps[i]);
+      const proj = get3DProjection(discX, discY, i);
+      
+      renderDisc(i, proj.x, proj.y, visualAmps[i], proj.scale);
       if (i > 0 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
         drawWireframeConnections(i - 1, i);
       }
@@ -2413,7 +2453,9 @@
       const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
       const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
       
-      renderDisc(i, discX, discY, visualAmps[i]);
+      const proj = get3DProjection(discX, discY, i);
+      
+      renderDisc(i, proj.x, proj.y, visualAmps[i], proj.scale);
       if (i < countSetting - 1 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
         drawWireframeConnections(i, i + 1);
       }
@@ -2449,15 +2491,19 @@
       const discY1 = targetY + (pts1.brandY - targetY) * idleBrandCurrent;
       const discY2 = targetY + (pts2.brandY - targetY) * idleBrandCurrent;
       
+      const proj1 = get3DProjection(discX1, discY1, idx1);
+      const proj2 = get3DProjection(discX2, discY2, idx2);
+      
       const amp1 = visualAmps[idx1];
       const amp2 = visualAmps[idx2];
       
       const targetRx = widthSetting;
       const brandRx = 18 * DPR;
-      const rx = targetRx + (brandRx - targetRx) * idleBrandCurrent;
+      const rx1 = (targetRx + (brandRx - targetRx) * idleBrandCurrent) * proj1.scale;
+      const rx2 = (targetRx + (brandRx - targetRx) * idleBrandCurrent) * proj2.scale;
       
-      const ry1 = (10 * DPR) + (amp1 * 200 * DPR);
-      const ry2 = (10 * DPR) + (amp2 * 200 * DPR);
+      const ry1 = ((10 * DPR) + (amp1 * 200 * DPR)) * proj1.scale;
+      const ry2 = ((10 * DPR) + (amp2 * 200 * DPR)) * proj2.scale;
       
       ctx.strokeStyle = `rgba(${getRGBChannels(themeAccent)}, ${0.15 * geometryCurrent})`;
       ctx.lineWidth = 0.5 * DPR;
@@ -2468,11 +2514,11 @@
         const cosA = Math.cos(angle);
         const sinA = Math.sin(angle);
         
-        const cy1 = discY1 + sinA * ry1;
-        const cx1 = discX1 + cosA * rx * 0.15;
+        const cy1 = proj1.y + sinA * ry1;
+        const cx1 = proj1.x + cosA * rx1 * 0.15;
         
-        const cy2 = discY2 + sinA * ry2;
-        const cx2 = discX2 + cosA * rx * 0.15;
+        const cy2 = proj2.y + sinA * ry2;
+        const cx2 = proj2.x + cosA * rx2 * 0.15;
         
         ctx.beginPath();
         ctx.moveTo(cx1, cy1);
@@ -2531,19 +2577,19 @@
     }
 
     // Individual Disc Drawing Function (now supports curved centers & calligraphic thickness)
-    function renderDisc(index, x, discY, amp) {
+    function renderDisc(index, x, discY, amp, pScale = 1.0) {
       const normX = (index - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
       
       // Calculate calligraphic radii LERPs
       const targetRx = widthSetting;
       const brandRx = 18 * DPR;
-      const rx = targetRx + (brandRx - targetRx) * idleBrandCurrent;
+      const rx = (targetRx + (brandRx - targetRx) * idleBrandCurrent) * pScale;
       
       const targetRy = (10 * DPR) + (amp * 200 * DPR);
       // Give letters a subtle organic thickness profile
       const brandThickness = 0.4 + Math.abs(Math.sin(normX * Math.PI * 7)) * 0.6;
       const brandRy = (14 * DPR) + brandThickness * 10 * DPR;
-      const ry = targetRy + (brandRy - targetRy) * idleBrandCurrent;
+      const ry = (targetRy + (brandRy - targetRy) * idleBrandCurrent) * pScale;
       
       let discColor = themeAccent;
       let shadowColor = themeShadow;
@@ -2788,6 +2834,19 @@
     // Brand "S" morph state controller
     const audioEnergy = (playing && analyser) ? (bass + mid + treble) / 3 : 0.0;
     idleBrandTarget = (!playing || audioEnergy < 0.035) ? 1.0 : 0.0;
+    
+    // Trigger particle burst on transition change
+    if (idleBrandTarget !== lastBrandTarget) {
+      particleBurstEnergy = 1.0;
+      lastBrandTarget = idleBrandTarget;
+    }
+    
+    // Smoothly decay burst energy over time
+    if (particleBurstEnergy > 0.0) {
+      particleBurstEnergy -= 0.022; // decays in ~45 frames
+      if (particleBurstEnergy < 0.0) particleBurstEnergy = 0.0;
+    }
+    
     if (idleBrandTarget === 0.0) {
       idleBrandCurrent += (0.0 - idleBrandCurrent) * 0.16; // Snap back fast on drop
     } else {
