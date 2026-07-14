@@ -1541,6 +1541,16 @@
   let lastBrandTarget = 1.0;
   let particleBurstEnergy = 0.0;
 
+  // Per-disc spring physics for staggered cinematic snap into brand letters
+  const MAX_DISCS = 160;
+  const discVx = new Float32Array(MAX_DISCS);        // spring velocity X
+  const discVy = new Float32Array(MAX_DISCS);        // spring velocity Y
+  const discCx = new Float32Array(MAX_DISCS).fill(-9999); // spring current X (-9999 = uninitialized)
+  const discCy = new Float32Array(MAX_DISCS).fill(-9999); // spring current Y
+  const SPRING_K  = 0.045;   // stiffness
+  const SPRING_D  = 0.72;    // damping (< 1 = bouncy)
+  let brandFormProgress = 1.0; // 0..1 master blend
+
   let playing = false;
   let startedAt = 0;
   let pausedOffset = 0;
@@ -2410,37 +2420,77 @@
     const ribDensity = params.ribDensity.value;
     const adaptiveColor = params.adaptiveColor.value === 'true';
 
-    // RENDER ORDER: Overlapping outer edges inwards to center
+    // Compute per-disc spring-physics positions toward brand letter targets
+    // Discs that are forming INTO the brand name use spring + stagger
+    // Discs returning to visualizer snap cleanly back
     const centerIndex = Math.floor(countSetting / 2);
+    const staggerWindowFrames = 22; // total frames span for the cascade delay
     
-    // Render Left Half
-    for (let i = 0; i < centerIndex; i++) {
+    function getDiscPosition(i) {
       const targetX = startX + i * spacingSetting;
       const targetY = midY;
+
+      if (idleBrandTarget === 0.0 || idleBrandCurrent < 0.01) {
+        // Returning to visualizer — snap directly, clear spring cache
+        discCx[i] = targetX;
+        discCy[i] = targetY;
+        discVx[i] = 0;
+        discVy[i] = 0;
+        return { x: targetX, y: targetY };
+      }
+
+      // Brand form animation: each disc starts its journey with a stagger delay
+      // based on its distance from center (center lands first, edges last)
+      const distFromCenter = Math.abs(i - (countSetting - 1) / 2);
+      const staggerDelay = (distFromCenter / ((countSetting - 1) / 2)) * staggerWindowFrames;
       
+      // Effective progress for this disc (clamped 0..1, delayed)
+      const totalFrames = 55;
+      const elapsedFrames = idleBrandCurrent * (totalFrames + staggerWindowFrames);
+      const discElapsed = Math.max(0, elapsedFrames - staggerDelay);
+      const discProgress = Math.min(1.0, discElapsed / totalFrames);
+
       const pts = getSpindleBrandCoords(i);
-      const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
-      const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
-      
-      const proj = get3DProjection(discX, discY, i);
-      
-      renderDisc(i, proj.x, proj.y, visualAmps[i], proj.scale);
+      const brandX = pts.brandX;
+      const brandY = pts.brandY;
+
+      // Initialize spring position from current disc location if not set
+      if (discCx[i] < -8000) {
+        discCx[i] = targetX;
+        discCy[i] = targetY;
+        discVx[i] = 0;
+        discVy[i] = 0;
+      }
+
+      // Target blends from origin to brand as discProgress rises
+      const tx = targetX + (brandX - targetX) * discProgress;
+      const ty = targetY + (brandY - targetY) * discProgress;
+
+      // Spring force toward target
+      const fx = (tx - discCx[i]) * SPRING_K;
+      const fy = (ty - discCy[i]) * SPRING_K;
+
+      discVx[i] = (discVx[i] + fx) * SPRING_D;
+      discVy[i] = (discVy[i] + fy) * SPRING_D;
+
+      discCx[i] += discVx[i];
+      discCy[i] += discVy[i];
+
+      return { x: discCx[i], y: discCy[i] };
+    }
+
+    // Render Left Half
+    for (let i = 0; i < centerIndex; i++) {
+      const pos = getDiscPosition(i);
+      renderDisc(i, pos.x, pos.y, visualAmps[i], 1.0);
       if (i > 0 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
         drawWireframeConnections(i - 1, i);
       }
     }
     // Render Right Half (drawn backwards to center)
     for (let i = countSetting - 1; i >= centerIndex; i--) {
-      const targetX = startX + i * spacingSetting;
-      const targetY = midY;
-      
-      const pts = getSpindleBrandCoords(i);
-      const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
-      const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
-      
-      const proj = get3DProjection(discX, discY, i);
-      
-      renderDisc(i, proj.x, proj.y, visualAmps[i], proj.scale);
+      const pos = getDiscPosition(i);
+      renderDisc(i, pos.x, pos.y, visualAmps[i], 1.0);
       if (i < countSetting - 1 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
         drawWireframeConnections(i, i + 1);
       }
@@ -2816,7 +2866,7 @@
       hypnosisFactor = (Math.abs(Math.sin(time * 0.2)) * 4.0).toFixed(1);
     }
 
-    // Brand "S" morph state controller
+    // Brand morph state controller — spring physics + staggered disc delay
     const audioEnergy = (playing && analyser) ? (bass + mid + treble) / 3 : 0.0;
     idleBrandTarget = (!playing || audioEnergy < 0.035) ? 1.0 : 0.0;
     
@@ -2824,18 +2874,27 @@
     if (idleBrandTarget !== lastBrandTarget) {
       particleBurstEnergy = 1.0;
       lastBrandTarget = idleBrandTarget;
+      // Reset disc spring positions so they re-fly from their current positions
+      if (idleBrandTarget === 1.0) {
+        discCx.fill(-9999);
+        discCy.fill(-9999);
+      }
     }
     
-    // Smoothly decay burst energy over time
+    // Smoothly decay burst energy
     if (particleBurstEnergy > 0.0) {
-      particleBurstEnergy -= 0.022; // decays in ~45 frames
+      particleBurstEnergy -= 0.018;
       if (particleBurstEnergy < 0.0) particleBurstEnergy = 0.0;
     }
     
+    // Fast snap back to visualizer on audio
     if (idleBrandTarget === 0.0) {
-      idleBrandCurrent += (0.0 - idleBrandCurrent) * 0.16; // Snap back fast on drop
+      idleBrandCurrent += (0.0 - idleBrandCurrent) * 0.22;
+      brandFormProgress = idleBrandCurrent;
     } else {
-      idleBrandCurrent += (1.0 - idleBrandCurrent) * 0.055; // Curve into S shape slowly
+      // Smooth eased approach — sine ease-out gives deceleration at the end
+      idleBrandCurrent += (1.0 - idleBrandCurrent) * 0.04;
+      brandFormProgress = idleBrandCurrent;
     }
 
     hudDeviation.textContent = randomDeviation + '%';
