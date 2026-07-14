@@ -1339,16 +1339,25 @@
       const midX = w / 2;
       const midY = h / 2;
       
-      // Spindle bending calculations for particles
+      // Normalize position along spindle length
       const normZ = this.z / (w * 0.41);
-      const spindleCurve = Math.sin(normZ * Math.PI * 1.15) * 75 * idleBrandCurrent;
+      
+      // Calculate normal horizontal center vs vertical S-brand center
+      const targetSpindleX = midX + this.z;
+      const targetSpindleY = midY;
+      
+      const brandSpindleX = midX + Math.sin(normZ * Math.PI * 1.5) * 85;
+      const brandSpindleY = midY + normZ * h * 0.28;
+      
+      const spindleX = targetSpindleX + (brandSpindleX - targetSpindleX) * idleBrandCurrent;
+      const spindleY = targetSpindleY + (brandSpindleY - targetSpindleY) * idleBrandCurrent;
       
       const cosA = Math.cos(this.angle);
       const sinA = Math.sin(this.angle);
       
-      // Orthographic 3D projection squashed vertically to look perspective tilted
-      this.x = midX + this.z + cosA * 10;
-      this.y = midY + spindleCurve + this.yOffset + sinA * dynamicRadius * 0.36;
+      // Orthographic 3D projection orbiting particles
+      this.x = spindleX + cosA * 10;
+      this.y = spindleY + this.yOffset + sinA * dynamicRadius * 0.36;
       
       // Interpolate fade based on master toggle opacity
       this.alpha += (this.maxAlpha * opacity - this.alpha) * 0.08;
@@ -2173,13 +2182,16 @@
       ctx.restore();
     }
 
-    // 2. Draw central structural Spindle Rod (curved with the visualizer S-brand layout)
+    // 2. Draw central structural Spindle Rod (curved and rotated with the visualizer S-brand layout)
     if (params.spindle.value === 'true') {
       ctx.save();
       ctx.beginPath();
       ctx.lineWidth = 3 * DPR;
       
-      const spindleGrad = ctx.createLinearGradient(startX - 20, midY, startX + waveLength + 20, midY);
+      const spindleGrad = ctx.createLinearGradient(
+        width / 2 - 50, midY - height * 0.3,
+        width / 2 + 50, midY + height * 0.3
+      );
       spindleGrad.addColorStop(0, 'rgba(0,0,0,0.6)');
       spindleGrad.addColorStop(0.3, accentRGB);
       spindleGrad.addColorStop(0.5, 'rgba(255,255,255,0.9)');
@@ -2195,16 +2207,23 @@
       // Traverse all discs and build the bent spindle line path!
       for (let i = 0; i < countSetting; i++) {
         const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-        const sOffset = Math.sin(normX * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
-        const discY = midY + sOffset;
-        const discX = startX + i * spacingSetting;
+        
+        // Target straight horizontal coordinates
+        const targetX = startX + i * spacingSetting;
+        const targetY = midY;
+        
+        // Brand vertical S coordinates
+        const brandX = width / 2 + Math.sin(normX * Math.PI * 1.5) * 85 * DPR;
+        const brandY = midY + normX * height * 0.28;
+        
+        // LERP position
+        const discX = targetX + (brandX - targetX) * idleBrandCurrent;
+        const discY = targetY + (brandY - targetY) * idleBrandCurrent;
         
         if (i === 0) {
-          ctx.moveTo(discX - 20, discY);
-        }
-        ctx.lineTo(discX, discY);
-        if (i === countSetting - 1) {
-          ctx.lineTo(discX + 20, discY);
+          ctx.moveTo(discX, discY);
+        } else {
+          ctx.lineTo(discX, discY);
         }
       }
       ctx.stroke();
@@ -2231,7 +2250,7 @@
       }
     }
 
-    // Buttery Smooth Waveform Interpolation (LERP)
+    // LERP disc heights
     for (let i = 0; i < countSetting; i++) {
       const targetAmp = amplitudes[i];
       if (visualAmps[i] === undefined) visualAmps[i] = targetAmp;
@@ -2244,14 +2263,23 @@
     const ribDensity = params.ribDensity.value;
     const adaptiveColor = params.adaptiveColor.value === 'true';
 
-    // RENDER ORDER: Symmetrical overlapping from edges inwards to the center
+    // RENDER ORDER: Overlapping outer edges inwards to center
     const centerIndex = Math.floor(countSetting / 2);
     
     // Render Left Half
     for (let i = 0; i < centerIndex; i++) {
       const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      const discY = midY + Math.sin(normX * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
-      renderDisc(i, startX + i * spacingSetting, visualAmps[i], discY);
+      
+      const targetX = startX + i * spacingSetting;
+      const targetY = midY;
+      
+      const brandX = width / 2 + Math.sin(normX * Math.PI * 1.5) * 85 * DPR;
+      const brandY = midY + normX * height * 0.28;
+      
+      const discX = targetX + (brandX - targetX) * idleBrandCurrent;
+      const discY = targetY + (brandY - targetY) * idleBrandCurrent;
+      
+      renderDisc(i, discX, discY, visualAmps[i]);
       if (i > 0 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
         drawWireframeConnections(i - 1, i);
       }
@@ -2259,8 +2287,17 @@
     // Render Right Half (drawn backwards to center)
     for (let i = countSetting - 1; i >= centerIndex; i--) {
       const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      const discY = midY + Math.sin(normX * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
-      renderDisc(i, startX + i * spacingSetting, visualAmps[i], discY);
+      
+      const targetX = startX + i * spacingSetting;
+      const targetY = midY;
+      
+      const brandX = width / 2 + Math.sin(normX * Math.PI * 1.5) * 85 * DPR;
+      const brandY = midY + normX * height * 0.28;
+      
+      const discX = targetX + (brandX - targetX) * idleBrandCurrent;
+      const discY = targetY + (brandY - targetY) * idleBrandCurrent;
+      
+      renderDisc(i, discX, discY, visualAmps[i]);
       if (i < countSetting - 1 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
         drawWireframeConnections(i, i + 1);
       }
@@ -2281,23 +2318,36 @@
     // Restore shake translate context
     ctx.restore();
 
-    // Wireframe connection lines drawer
+    // Wireframe connection lines drawer (now accounts for curved center positions)
     function drawWireframeConnections(idx1, idx2) {
-      const x1 = startX + idx1 * spacingSetting;
-      const x2 = startX + idx2 * spacingSetting;
+      const normX1 = (idx1 - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
+      const normX2 = (idx2 - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
+      
+      const targetX1 = startX + idx1 * spacingSetting;
+      const targetX2 = startX + idx2 * spacingSetting;
+      const targetY = midY;
+      
+      const brandX1 = width / 2 + Math.sin(normX1 * Math.PI * 1.5) * 85 * DPR;
+      const brandX2 = width / 2 + Math.sin(normX2 * Math.PI * 1.5) * 85 * DPR;
+      
+      const brandY1 = midY + normX1 * height * 0.28;
+      const brandY2 = midY + normX2 * height * 0.28;
+      
+      const discX1 = targetX1 + (brandX1 - targetX1) * idleBrandCurrent;
+      const discX2 = targetX2 + (brandX2 - targetX2) * idleBrandCurrent;
+      
+      const discY1 = targetY + (brandY1 - targetY) * idleBrandCurrent;
+      const discY2 = targetY + (brandY2 - targetY) * idleBrandCurrent;
       
       const amp1 = visualAmps[idx1];
       const amp2 = visualAmps[idx2];
       
-      const normX1 = (idx1 - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      const normX2 = (idx2 - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      
-      const discY1 = midY + Math.sin(normX1 * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
-      const discY2 = midY + Math.sin(normX2 * Math.PI * 1.15) * 75 * DPR * idleBrandCurrent;
+      const targetRx = widthSetting;
+      const brandRx = 20 * DPR;
+      const rx = targetRx + (brandRx - targetRx) * idleBrandCurrent;
       
       const ry1 = (10 * DPR) + (amp1 * 200 * DPR);
       const ry2 = (10 * DPR) + (amp2 * 200 * DPR);
-      const rx = widthSetting;
       
       ctx.strokeStyle = `rgba(${getRGBChannels(themeAccent)}, ${0.15 * geometryCurrent})`;
       ctx.lineWidth = 0.5 * DPR;
@@ -2309,10 +2359,10 @@
         const sinA = Math.sin(angle);
         
         const cy1 = discY1 + sinA * ry1;
-        const cx1 = x1 + cosA * rx * 0.15;
+        const cx1 = discX1 + cosA * rx * 0.15;
         
         const cy2 = discY2 + sinA * ry2;
-        const cx2 = x2 + cosA * rx * 0.15;
+        const cx2 = discX2 + cosA * rx * 0.15;
         
         ctx.beginPath();
         ctx.moveTo(cx1, cy1);
@@ -2371,16 +2421,17 @@
     }
 
     // Individual Disc Drawing Function (now supports curved centers & calligraphic thickness)
-    function renderDisc(index, x, amp, discY) {
-      const rx = widthSetting;
-      
-      // Calculate calligraphic thickness if in idle S-brand mode
+    function renderDisc(index, x, discY, amp) {
       const normX = (index - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      const brandThickness = Math.abs(Math.sin(normX * Math.PI * 1.15));
-      const brandRy = (10 * DPR) + (8 * DPR) + brandThickness * 28 * DPR;
+      
+      // Calculate calligraphic radii LERPs
+      const targetRx = widthSetting;
+      const brandRx = 20 * DPR;
+      const rx = targetRx + (brandRx - targetRx) * idleBrandCurrent;
       
       const targetRy = (10 * DPR) + (amp * 200 * DPR);
-      // LERP target height between active wave and idle S thickness
+      const brandThickness = Math.abs(Math.sin(normX * Math.PI * 1.5));
+      const brandRy = (12 * DPR) + brandThickness * 20 * DPR;
       const ry = targetRy + (brandRy - targetRy) * idleBrandCurrent;
       
       let discColor = themeAccent;
@@ -2498,7 +2549,7 @@
           ctx.stroke();
         }
       }
-
+      
       // Fine outer silhouette stroke to hold vector structure crisp
       const strokeOpacity = (isAltGeom && geomType === 'segmented') ? (1.0 - geometryCurrent) : 1.0;
       ctx.strokeStyle = `rgba(0,0,0,${0.45 * strokeOpacity})`;
