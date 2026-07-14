@@ -1521,8 +1521,8 @@
   let shakeOffsetX = 0.0;
   let shakeOffsetY = 0.0;
   let lastBass = 0.0;
-  let idleBrandTarget = 1.0;
-  let idleBrandCurrent = 1.0;
+  let idleBrandTarget = 0.0;
+  let idleBrandCurrent = 0.0;
 
   let playing = false;
   let startedAt = 0;
@@ -2787,7 +2787,7 @@
 
     // Brand "S" morph state controller
     const audioEnergy = (playing && analyser) ? (bass + mid + treble) / 3 : 0.0;
-    idleBrandTarget = (!playing || audioEnergy < 0.035) ? 1.0 : 0.0;
+    idleBrandTarget = (audioBuffer && (!playing || audioEnergy < 0.035)) ? 1.0 : 0.0;
     if (idleBrandTarget === 0.0) {
       idleBrandCurrent += (0.0 - idleBrandCurrent) * 0.16; // Snap back fast on drop
     } else {
