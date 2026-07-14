@@ -1547,9 +1547,11 @@
   const discVy = new Float32Array(MAX_DISCS);        // spring velocity Y
   const discCx = new Float32Array(MAX_DISCS).fill(-9999); // spring current X (-9999 = uninitialized)
   const discCy = new Float32Array(MAX_DISCS).fill(-9999); // spring current Y
-  const SPRING_K  = 0.045;   // stiffness
-  const SPRING_D  = 0.72;    // damping (< 1 = bouncy)
+  const SPRING_K  = 0.05;    // stiffness
+  const SPRING_D  = 0.74;    // damping (< 1 = bouncy, slight overshoot)
   let brandFormProgress = 1.0; // 0..1 master blend
+  let brandReadyOnLoad = false; // flag: first frame must instantly place discs at brand positions
+  let logoExploding = false;   // flag: discs currently exploding outward on play
 
   let playing = false;
   let startedAt = 0;
@@ -2430,31 +2432,55 @@
       const targetX = startX + i * spacingSetting;
       const targetY = midY;
 
-      if (idleBrandTarget === 0.0 || idleBrandCurrent < 0.01) {
-        // Returning to visualizer — snap directly, clear spring cache
-        discCx[i] = targetX;
-        discCy[i] = targetY;
-        discVx[i] = 0;
-        discVy[i] = 0;
-        return { x: targetX, y: targetY };
-      }
-
-      // Brand form animation: each disc starts its journey with a stagger delay
-      // based on its distance from center (center lands first, edges last)
-      const distFromCenter = Math.abs(i - (countSetting - 1) / 2);
-      const staggerDelay = (distFromCenter / ((countSetting - 1) / 2)) * staggerWindowFrames;
-      
-      // Effective progress for this disc (clamped 0..1, delayed)
-      const totalFrames = 55;
-      const elapsedFrames = idleBrandCurrent * (totalFrames + staggerWindowFrames);
-      const discElapsed = Math.max(0, elapsedFrames - staggerDelay);
-      const discProgress = Math.min(1.0, discElapsed / totalFrames);
-
       const pts = getSpindleBrandCoords(i);
       const brandX = pts.brandX;
       const brandY = pts.brandY;
 
-      // Initialize spring position from current disc location if not set
+      // --- FIRST FRAME: instantly place all discs at brand positions, no animation ---
+      if (!brandReadyOnLoad) {
+        discCx[i] = brandX;
+        discCy[i] = brandY;
+        discVx[i] = 0;
+        discVy[i] = 0;
+        return { x: brandX, y: brandY };
+      }
+
+      // --- RETURNING TO VISUALIZER (playing) ---
+      if (idleBrandTarget === 0.0) {
+        // On the very first frame of play: inject explosive outward velocity from brand position
+        if (logoExploding && discCx[i] > -8000) {
+          // Each disc gets a velocity burst directed away from center
+          const cx = width / 2;
+          const cy = midY;
+          const dx = discCx[i] - cx;
+          const dy = discCy[i] - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const burst = 18 + Math.random() * 12;
+          discVx[i] = (dx / dist) * burst + (Math.random() - 0.5) * 8;
+          discVy[i] = (dy / dist) * burst * 0.7 + (Math.random() - 0.5) * 12;
+        }
+
+        // Spring toward flat visualizer target
+        const fx = (targetX - discCx[i]) * 0.06;
+        const fy = (targetY - discCy[i]) * 0.06;
+        discVx[i] = (discVx[i] + fx) * 0.78;
+        discVy[i] = (discVy[i] + fy) * 0.78;
+        discCx[i] += discVx[i];
+        discCy[i] += discVy[i];
+
+        return { x: discCx[i], y: discCy[i] };
+      }
+
+      // --- FORMING BRAND (paused / idle): cascade spring from flat line into letters ---
+      // Stagger: center discs land first, outer edges follow
+      const distFromCenter = Math.abs(i - (countSetting - 1) / 2);
+      const staggerDelay = (distFromCenter / ((countSetting - 1) / 2)) * staggerWindowFrames;
+      const totalFrames = 50;
+      const elapsedFrames = idleBrandCurrent * (totalFrames + staggerWindowFrames);
+      const discElapsed = Math.max(0, elapsedFrames - staggerDelay);
+      const discProgress = Math.min(1.0, discElapsed / totalFrames);
+
+      // Initialize from flat visualizer line if spring not set
       if (discCx[i] < -8000) {
         discCx[i] = targetX;
         discCy[i] = targetY;
@@ -2462,22 +2488,22 @@
         discVy[i] = 0;
       }
 
-      // Target blends from origin to brand as discProgress rises
+      // Target slides from flat line toward letter position as discProgress rises
       const tx = targetX + (brandX - targetX) * discProgress;
       const ty = targetY + (brandY - targetY) * discProgress;
 
-      // Spring force toward target
       const fx = (tx - discCx[i]) * SPRING_K;
       const fy = (ty - discCy[i]) * SPRING_K;
-
       discVx[i] = (discVx[i] + fx) * SPRING_D;
       discVy[i] = (discVy[i] + fy) * SPRING_D;
-
       discCx[i] += discVx[i];
       discCy[i] += discVy[i];
 
       return { x: discCx[i], y: discCy[i] };
     }
+
+    // After first frame, mark logo as pre-loaded
+    if (!brandReadyOnLoad) brandReadyOnLoad = true;
 
     // Render Left Half
     for (let i = 0; i < centerIndex; i++) {
@@ -2870,15 +2896,26 @@
     const audioEnergy = (playing && analyser) ? (bass + mid + treble) / 3 : 0.0;
     idleBrandTarget = (!playing || audioEnergy < 0.035) ? 1.0 : 0.0;
     
-    // Trigger particle burst on transition change
+    // Detect transition changes
     if (idleBrandTarget !== lastBrandTarget) {
       particleBurstEnergy = 1.0;
-      lastBrandTarget = idleBrandTarget;
-      // Reset disc spring positions so they re-fly from their current positions
-      if (idleBrandTarget === 1.0) {
-        discCx.fill(-9999);
-        discCy.fill(-9999);
+      
+      if (idleBrandTarget === 0.0) {
+        // Music starts → trigger explosive outward burst for ONE frame
+        logoExploding = true;
+      } else {
+        // Music stops → reset spring origins so discs cascade from their current positions
+        logoExploding = false;
+        for (let i = 0; i < MAX_DISCS; i++) {
+          // Keep current discCx/discCy positions (wherever discs froze) as start of spring
+          discVx[i] = 0;
+          discVy[i] = 0;
+        }
       }
+      lastBrandTarget = idleBrandTarget;
+    } else {
+      // Exploding flag lives only for a single frame
+      if (logoExploding) logoExploding = false;
     }
     
     // Smoothly decay burst energy
@@ -2887,13 +2924,12 @@
       if (particleBurstEnergy < 0.0) particleBurstEnergy = 0.0;
     }
     
-    // Fast snap back to visualizer on audio
+    // Master blend value
     if (idleBrandTarget === 0.0) {
-      idleBrandCurrent += (0.0 - idleBrandCurrent) * 0.22;
+      idleBrandCurrent += (0.0 - idleBrandCurrent) * 0.18;
       brandFormProgress = idleBrandCurrent;
     } else {
-      // Smooth eased approach — sine ease-out gives deceleration at the end
-      idleBrandCurrent += (1.0 - idleBrandCurrent) * 0.04;
+      idleBrandCurrent += (1.0 - idleBrandCurrent) * 0.035;
       brandFormProgress = idleBrandCurrent;
     }
 
