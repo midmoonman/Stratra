@@ -1648,6 +1648,11 @@
   let onsets = [];
   let schedule = [];
   let words = [];
+
+  // Local automatic transcription variables
+  let transcriptionWorker = null;
+  let isTranscribing = false;
+  let transcriptionProgressText = "";
   
   // Persistent array to hold LERP values for visual disc sizes
   let visualAmps = new Float32Array(300);
@@ -2062,6 +2067,9 @@
       
       flashLiveIndicator();
 
+      // Trigger client-side automated transcription (Whisper) in background Web Worker
+      runLocalTranscription(audioBuffer);
+
       // Auto-play immediately — ensure context is running
       if (audioCtx.state === 'suspended') {
         await audioCtx.resume();
@@ -2074,6 +2082,81 @@
       playBtn.disabled = true;
       restartBtn.disabled = true;
     }
+  }
+
+  async function runLocalTranscription(buffer) {
+    if (!buffer) return;
+
+    isTranscribing = true;
+    transcriptionProgressText = "[ Initializing local speech recognizer... ]";
+
+    try {
+      // 1. Resample to 16000Hz mono Float32Array
+      const float32Data = await resampleTo16kMono(buffer);
+
+      // 2. Instantiate worker if not already created
+      if (!transcriptionWorker) {
+        transcriptionWorker = new Worker('worker.js', { type: 'module' });
+
+        transcriptionWorker.onmessage = (event) => {
+          const data = event.data;
+          if (data.status === 'progress') {
+            const percent = Math.round((data.progress || 0) * 10) / 10;
+            const loadedMB = (data.loaded / 1024 / 1024).toFixed(1);
+            const totalMB = (data.total / 1024 / 1024).toFixed(1);
+            transcriptionProgressText = `[ Downloading Model: ${percent}% (${loadedMB}/${totalMB} MB) ]`;
+          } else if (data.status === 'transcribing') {
+            transcriptionProgressText = `[ Transcribing speech locally... ]`;
+          } else if (data.status === 'complete') {
+            isTranscribing = false;
+            transcriptionProgressText = "";
+
+            const chunks = data.chunks || [];
+            schedule = chunks.map(c => {
+              return {
+                word: c.text.trim(),
+                t: c.timestamp[0]
+              };
+            }).filter(item => item.word.length > 0);
+
+            const fullText = chunks.map(c => c.text).join('').trim();
+            transcriptInput.value = fullText;
+            hudTotalWords.textContent = schedule.length;
+
+            subtitleText.textContent = "[ TRANSCRIPTION COMPLETED ]";
+            subtitleText.style.opacity = '1';
+            setTimeout(() => {
+              if (!playing && !isTranscribing) subtitleText.textContent = "";
+            }, 2000);
+          } else if (data.status === 'error') {
+            isTranscribing = false;
+            transcriptionProgressText = "";
+            console.error("Transcription error:", data.message);
+            subtitleText.textContent = `[ ASR Failed: ${data.message} ]`;
+            setTimeout(() => {
+              if (!playing && !isTranscribing) subtitleText.textContent = "";
+            }, 3000);
+          }
+        };
+      }
+
+      // 3. Post audio data to worker
+      transcriptionWorker.postMessage({ audioData: float32Data });
+    } catch (err) {
+      isTranscribing = false;
+      transcriptionProgressText = "";
+      console.error("Local ASR initialization failed:", err);
+    }
+  }
+
+  async function resampleTo16kMono(audioBuf) {
+    const offlineCtx = new OfflineAudioContext(1, Math.round(audioBuf.duration * 16000), 16000);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = audioBuf;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+    const resampledBuf = await offlineCtx.startRendering();
+    return resampledBuf.getChannelData(0);
   }
 
   // Update schedule based on transcript changes or segmenting mode
@@ -3083,7 +3166,13 @@
     let activeWord = '';
     let progress = 0;
 
-    if (playing && audioBuffer) {
+    if (isTranscribing) {
+      if (params.subtitleMode.value === 'bottom') {
+        subtitleText.textContent = transcriptionProgressText;
+        subtitleText.style.opacity = '0.7';
+        subtitleText.style.fontSize = '12px';
+      }
+    } else if (playing && audioBuffer) {
       const audioTime = audioCtx.currentTime - startedAt;
 
       if (schedule.length) {
