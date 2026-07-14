@@ -1572,6 +1572,30 @@
     const cx = texWidth / 2;
     const cy = texHeight / 2;
     
+    // Draw a stylized holographic 'S' logo in the center for the STRATRA brand
+    tCtx.save();
+    tCtx.font = '800 220px "Outfit", "Inter", sans-serif';
+    tCtx.textAlign = 'center';
+    tCtx.textBaseline = 'middle';
+    
+    // Outer soft glow aura
+    tCtx.shadowColor = 'rgba(255, 255, 255, 0.4)';
+    tCtx.shadowBlur = 30;
+    tCtx.fillStyle = 'rgba(255, 255, 255, 0.02)';
+    tCtx.fillText('S', cx, cy);
+    
+    // Mid glow stroke
+    tCtx.shadowBlur = 15;
+    tCtx.strokeStyle = 'rgba(255, 255, 255, 0.06)';
+    tCtx.lineWidth = 4;
+    tCtx.strokeText('S', cx, cy);
+    
+    // Crisp inner core fill
+    tCtx.shadowBlur = 0;
+    tCtx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+    tCtx.fillText('S', cx, cy);
+    tCtx.restore();
+
     // Draw circular soft concentric ripples matching user's visual style
     const steps = 14;
     const spacing = 45;
