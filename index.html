@@ -336,18 +336,102 @@
   }
 
   .select-group select {
-    width: 100%;
-    background: rgba(var(--bg-void), 0.8);
-    border: 1px solid var(--line);
-    color: var(--color-accent);
-    font-family: var(--font-mono);
-    font-size: 11px;
-    padding: 8px 10px;
-    outline: none;
-    cursor: pointer;
+    display: none !important;
   }
-  .select-group select:focus {
+  
+  /* Custom styled select replacement */
+  .custom-select-container {
+    position: relative;
+    width: 100%;
+    user-select: none;
+    margin-bottom: 8px;
+  }
+  .custom-select-trigger {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background: rgba(var(--bg-void), 0.85);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    color: var(--color-accent);
+    cursor: pointer;
+    font-family: 'Poppins', sans-serif;
+    font-size: 12px;
+    font-weight: 500;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .custom-select-trigger:hover {
     border-color: var(--color-accent);
+  }
+  .custom-select-container.open .custom-select-trigger {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 10px rgba(var(--color-accent-rgb), 0.2);
+  }
+  .custom-select-trigger .arrow {
+    font-size: 10px;
+    transition: transform 0.2s ease;
+    color: rgba(var(--color-accent-rgb), 0.7);
+  }
+  .custom-select-container.open .custom-select-trigger .arrow {
+    transform: rotate(180deg);
+  }
+  .custom-options {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    background: rgba(var(--bg-abyss), 0.98);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    z-index: 120;
+    max-height: 180px;
+    overflow-y: auto;
+    opacity: 0;
+    transform: translateY(-6px);
+    pointer-events: none;
+    transition: opacity 0.18s ease, transform 0.18s ease;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+  }
+  .custom-select-container.open .custom-options {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .custom-option {
+    padding: 8px 12px;
+    font-family: 'Poppins', sans-serif;
+    font-size: 12px;
+    color: var(--color-text);
+    cursor: pointer;
+    transition: background 0.1s ease, color 0.1s ease;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.02);
+  }
+  .custom-option:last-child {
+    border-bottom: none;
+  }
+  .custom-option:hover {
+    background: rgba(var(--color-accent-rgb), 0.12);
+    color: var(--color-accent);
+  }
+  .custom-option.selected {
+    background: rgba(var(--color-accent-rgb), 0.25);
+    color: var(--color-accent);
+    font-weight: 600;
+  }
+  /* Custom scrollbar for options dropdown */
+  .custom-options::-webkit-scrollbar {
+    width: 6px;
+  }
+  .custom-options::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-options::-webkit-scrollbar-thumb {
+    background: var(--line);
+    border-radius: 3px;
+  }
+  .custom-options::-webkit-scrollbar-thumb:hover {
+    background: var(--color-accent);
   }
 
   .upload-area {
@@ -942,6 +1026,92 @@
   document.getElementById('renderQualitySelect').addEventListener('change', () => {
     resize();
   });
+
+  // Helper: Initialize Custom Select elements
+  function initCustomSelects() {
+    const nativeSelects = sidebar.querySelectorAll('select');
+    nativeSelects.forEach(select => {
+      // Create wrapper container
+      const wrapper = document.createElement('div');
+      wrapper.className = 'custom-select-container';
+      
+      // Create trigger button
+      const trigger = document.createElement('div');
+      trigger.className = 'custom-select-trigger';
+      
+      const triggerText = document.createElement('span');
+      // Sync initial text value
+      const selectedOption = select.options[select.selectedIndex];
+      triggerText.textContent = selectedOption ? selectedOption.textContent : '';
+      
+      const triggerArrow = document.createElement('div');
+      triggerArrow.className = 'arrow';
+      triggerArrow.textContent = '▾';
+      
+      trigger.appendChild(triggerText);
+      trigger.appendChild(triggerArrow);
+      wrapper.appendChild(trigger);
+      
+      // Create option panel
+      const optionsPanel = document.createElement('div');
+      optionsPanel.className = 'custom-options';
+      
+      Array.from(select.options).forEach(opt => {
+        const customOpt = document.createElement('div');
+        customOpt.className = 'custom-option';
+        if (opt.selected) customOpt.classList.add('selected');
+        customOpt.textContent = opt.textContent;
+        customOpt.setAttribute('data-value', opt.value);
+        
+        customOpt.addEventListener('click', (e) => {
+          e.stopPropagation();
+          
+          // Reset checkmark / select classes
+          optionsPanel.querySelectorAll('.custom-option').forEach(c => c.classList.remove('selected'));
+          customOpt.classList.add('selected');
+          
+          // Update visual label
+          triggerText.textContent = opt.textContent;
+          
+          // Modify hidden native select & fire event
+          select.value = opt.value;
+          select.dispatchEvent(new Event('change'));
+          
+          // Close option panel
+          wrapper.classList.remove('open');
+        });
+        
+        optionsPanel.appendChild(customOpt);
+      });
+      
+      wrapper.appendChild(optionsPanel);
+      
+      // Toggle display on click
+      trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        
+        // Close other open custom selects
+        document.querySelectorAll('.custom-select-container').forEach(c => {
+          if (c !== wrapper) c.classList.remove('open');
+        });
+        
+        wrapper.classList.toggle('open');
+      });
+      
+      // Insert right after native hidden select
+      select.parentNode.insertBefore(wrapper, select.nextSibling);
+    });
+    
+    // Close dropdowns on clicking anywhere outside
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.custom-select-container').forEach(c => {
+        c.classList.remove('open');
+      });
+    });
+  }
+
+  // Build the custom dropdown menus
+  initCustomSelects();
 
   // Audio Variables
   let audioCtx = null;
