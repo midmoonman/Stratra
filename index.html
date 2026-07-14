@@ -2303,8 +2303,12 @@
       const letterPts = getLetterCoords(char, localCount);
       const pt = letterPts[Math.min(localIdx, letterPts.length - 1)] || { lx: 0.5, ly: 0.0 };
       
-      const brandX = (width - wordWidth) / 2 + (k + 0.5) * w_cell + (pt.lx - 0.5) * w_cell * 0.72;
-      const brandY = midY + pt.ly * wordHeight * 0.5;
+      // Cinematic slow floating drift motion for letters when idle
+      const floatY = Math.sin(time * 1.5 + idx * 0.08) * 6 * DPR;
+      const floatX = Math.cos(time * 0.9 + idx * 0.05) * 3 * DPR;
+      
+      const brandX = (width - wordWidth) / 2 + (k + 0.5) * w_cell + (pt.lx - 0.5) * w_cell * 0.72 + floatX;
+      const brandY = midY + pt.ly * wordHeight * 0.5 + floatY;
       
       return { brandX, brandY };
     }
