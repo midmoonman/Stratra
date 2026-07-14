@@ -638,6 +638,7 @@
   }
 
   .ambient-idle-msg {
+    display: none !important;
     position: fixed;
     left: 50%;
     top: 50%;
@@ -1310,6 +1311,71 @@
   // Build the custom dropdown menus
   initCustomSelects();
 
+  // Letter vector shapes generator for S-T-R-A-T-R-A
+  function getLetterCoords(letter, count) {
+    const pts = [];
+    if (letter === 'S') {
+      for (let i = 0; i < count; i++) {
+        const t = i / (count - 1);
+        const ly = -0.9 + t * 1.8;
+        const angle = t * Math.PI * 1.85 - Math.PI * 0.925;
+        const lx = 0.5 - Math.sin(angle) * 0.32;
+        pts.push({ lx, ly });
+      }
+    } else if (letter === 'T') {
+      const topCount = Math.floor(count * 0.45);
+      const stemCount = count - topCount;
+      // Top bar
+      for (let i = 0; i < topCount; i++) {
+        const t = i / (topCount - 1);
+        pts.push({ lx: 0.15 + t * 0.7, ly: -0.9 });
+      }
+      // Vertical stem
+      for (let i = 0; i < stemCount; i++) {
+        const t = i / (stemCount - 1);
+        pts.push({ lx: 0.5, ly: -0.9 + t * 1.8 });
+      }
+    } else if (letter === 'R') {
+      const stemCount = Math.floor(count * 0.35);
+      const loopCount = Math.floor(count * 0.35);
+      const legCount = count - stemCount - loopCount;
+      // Vertical stem
+      for (let i = 0; i < stemCount; i++) {
+        pts.push({ lx: 0.2, ly: -0.9 + (i / (stemCount - 1)) * 1.8 });
+      }
+      // Loop
+      for (let i = 0; i < loopCount; i++) {
+        const a = -Math.PI / 2 + (i / (loopCount - 1)) * Math.PI;
+        pts.push({ lx: 0.2 + Math.cos(a) * 0.45, ly: -0.4 + Math.sin(a) * 0.5 });
+      }
+      // Diagonal leg
+      for (let i = 0; i < legCount; i++) {
+        const t = i / (legCount - 1);
+        pts.push({ lx: 0.28 + t * 0.5, ly: 0.1 + t * 0.8 });
+      }
+    } else if (letter === 'A') {
+      const leg1 = Math.floor(count * 0.4);
+      const leg2 = Math.floor(count * 0.4);
+      const cross = count - leg1 - leg2;
+      // Left leg
+      for (let i = 0; i < leg1; i++) {
+        const t = i / (leg1 - 1);
+        pts.push({ lx: 0.5 - t * 0.35, ly: -0.9 + t * 1.8 });
+      }
+      // Right leg
+      for (let i = 0; i < leg2; i++) {
+        const t = i / (leg2 - 1);
+        pts.push({ lx: 0.5 + t * 0.35, ly: -0.9 + t * 1.8 });
+      }
+      // Crossbar
+      for (let i = 0; i < cross; i++) {
+        const t = i / (cross - 1);
+        pts.push({ lx: 0.32 + t * 0.36, ly: 0.15 });
+      }
+    }
+    return pts;
+  }
+
   // ---------- GPU-Like Orbiting Particle System ----------
   class VisualParticle {
     constructor(canvasWidth, canvasHeight) {
@@ -1346,8 +1412,30 @@
       const targetSpindleX = midX + this.z;
       const targetSpindleY = midY;
       
-      const brandSpindleX = midX + Math.sin(normZ * Math.PI * 1.5) * 85;
-      const brandSpindleY = midY + normZ * h * 0.28;
+      // Brand STRATRA text coordinates for particle orbit center
+      const countSetting = 140;
+      const discsPerLetter = Math.floor(countSetting / 7);
+      const approxDiscIdx = Math.floor((normZ + 1.0) * 0.5 * countSetting);
+      const k = Math.min(6, Math.floor(approxDiscIdx / discsPerLetter));
+      
+      let localIdx = approxDiscIdx - k * discsPerLetter;
+      let localCount = discsPerLetter;
+      if (k === 6) {
+        localCount = countSetting - 6 * discsPerLetter;
+      }
+      
+      const wordWidth = Math.min(w * 0.85, 780);
+      const wordHeight = 110;
+      const w_cell = wordWidth / 7;
+      
+      const chars = ['S', 'T', 'R', 'A', 'T', 'R', 'A'];
+      const char = chars[k];
+      
+      const letterPts = getLetterCoords(char, localCount);
+      const pt = letterPts[Math.min(localIdx, letterPts.length - 1)] || { lx: 0.5, ly: 0.0 };
+      
+      const brandSpindleX = (w - wordWidth) / 2 + (k + 0.5) * w_cell + (pt.lx - 0.5) * w_cell * 0.72;
+      const brandSpindleY = midY + pt.ly * wordHeight * 0.5;
       
       const spindleX = targetSpindleX + (brandSpindleX - targetSpindleX) * idleBrandCurrent;
       const spindleY = targetSpindleY + (brandSpindleY - targetSpindleY) * idleBrandCurrent;
@@ -1356,7 +1444,7 @@
       const sinA = Math.sin(this.angle);
       
       // Orthographic 3D projection orbiting particles
-      this.x = spindleX + cosA * 10;
+      this.x = spindleX + cosA * 8;
       this.y = spindleY + this.yOffset + sinA * dynamicRadius * 0.36;
       
       // Interpolate fade based on master toggle opacity
@@ -2182,16 +2270,38 @@
       ctx.restore();
     }
 
-    // 2. Draw central structural Spindle Rod (curved and rotated with the visualizer S-brand layout)
+    // Dynamic brand target coordinate calculation helper (S-T-R-A-T-R-A layout)
+    function getSpindleBrandCoords(idx) {
+      const discsPerLetter = Math.floor(countSetting / 7);
+      const k = Math.min(6, Math.floor(idx / discsPerLetter));
+      let localIdx = idx - k * discsPerLetter;
+      let localCount = discsPerLetter;
+      if (k === 6) {
+        localCount = countSetting - 6 * discsPerLetter;
+      }
+      
+      const wordWidth = Math.min(width * 0.85, 780 * DPR);
+      const wordHeight = 110 * DPR;
+      const w_cell = wordWidth / 7;
+      
+      const chars = ['S', 'T', 'R', 'A', 'T', 'R', 'A'];
+      const char = chars[k];
+      const letterPts = getLetterCoords(char, localCount);
+      const pt = letterPts[Math.min(localIdx, letterPts.length - 1)] || { lx: 0.5, ly: 0.0 };
+      
+      const brandX = (width - wordWidth) / 2 + (k + 0.5) * w_cell + (pt.lx - 0.5) * w_cell * 0.72;
+      const brandY = midY + pt.ly * wordHeight * 0.5;
+      
+      return { brandX, brandY };
+    }
+
+    // 2. Draw central structural Spindle Rod (curved with the visualizer S-T-R-A-T-R-A layout)
     if (params.spindle.value === 'true') {
       ctx.save();
       ctx.beginPath();
       ctx.lineWidth = 3 * DPR;
       
-      const spindleGrad = ctx.createLinearGradient(
-        width / 2 - 50, midY - height * 0.3,
-        width / 2 + 50, midY + height * 0.3
-      );
+      const spindleGrad = ctx.createLinearGradient(startX - 20, midY, startX + waveLength + 20, midY);
       spindleGrad.addColorStop(0, 'rgba(0,0,0,0.6)');
       spindleGrad.addColorStop(0.3, accentRGB);
       spindleGrad.addColorStop(0.5, 'rgba(255,255,255,0.9)');
@@ -2206,19 +2316,12 @@
       
       // Traverse all discs and build the bent spindle line path!
       for (let i = 0; i < countSetting; i++) {
-        const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-        
-        // Target straight horizontal coordinates
         const targetX = startX + i * spacingSetting;
         const targetY = midY;
         
-        // Brand vertical S coordinates
-        const brandX = width / 2 + Math.sin(normX * Math.PI * 1.5) * 85 * DPR;
-        const brandY = midY + normX * height * 0.28;
-        
-        // LERP position
-        const discX = targetX + (brandX - targetX) * idleBrandCurrent;
-        const discY = targetY + (brandY - targetY) * idleBrandCurrent;
+        const pts = getSpindleBrandCoords(i);
+        const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
+        const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
         
         if (i === 0) {
           ctx.moveTo(discX, discY);
@@ -2268,16 +2371,12 @@
     
     // Render Left Half
     for (let i = 0; i < centerIndex; i++) {
-      const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      
       const targetX = startX + i * spacingSetting;
       const targetY = midY;
       
-      const brandX = width / 2 + Math.sin(normX * Math.PI * 1.5) * 85 * DPR;
-      const brandY = midY + normX * height * 0.28;
-      
-      const discX = targetX + (brandX - targetX) * idleBrandCurrent;
-      const discY = targetY + (brandY - targetY) * idleBrandCurrent;
+      const pts = getSpindleBrandCoords(i);
+      const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
+      const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
       
       renderDisc(i, discX, discY, visualAmps[i]);
       if (i > 0 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
@@ -2286,16 +2385,12 @@
     }
     // Render Right Half (drawn backwards to center)
     for (let i = countSetting - 1; i >= centerIndex; i--) {
-      const normX = (i - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      
       const targetX = startX + i * spacingSetting;
       const targetY = midY;
       
-      const brandX = width / 2 + Math.sin(normX * Math.PI * 1.5) * 85 * DPR;
-      const brandY = midY + normX * height * 0.28;
-      
-      const discX = targetX + (brandX - targetX) * idleBrandCurrent;
-      const discY = targetY + (brandY - targetY) * idleBrandCurrent;
+      const pts = getSpindleBrandCoords(i);
+      const discX = targetX + (pts.brandX - targetX) * idleBrandCurrent;
+      const discY = targetY + (pts.brandY - targetY) * idleBrandCurrent;
       
       renderDisc(i, discX, discY, visualAmps[i]);
       if (i < countSetting - 1 && params.geometryType.value === 'wireframe' && geometryCurrent > 0.01) {
@@ -2320,30 +2415,24 @@
 
     // Wireframe connection lines drawer (now accounts for curved center positions)
     function drawWireframeConnections(idx1, idx2) {
-      const normX1 = (idx1 - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      const normX2 = (idx2 - (countSetting - 1) / 2) / ((countSetting - 1) / 2);
-      
       const targetX1 = startX + idx1 * spacingSetting;
       const targetX2 = startX + idx2 * spacingSetting;
       const targetY = midY;
       
-      const brandX1 = width / 2 + Math.sin(normX1 * Math.PI * 1.5) * 85 * DPR;
-      const brandX2 = width / 2 + Math.sin(normX2 * Math.PI * 1.5) * 85 * DPR;
+      const pts1 = getSpindleBrandCoords(idx1);
+      const pts2 = getSpindleBrandCoords(idx2);
       
-      const brandY1 = midY + normX1 * height * 0.28;
-      const brandY2 = midY + normX2 * height * 0.28;
+      const discX1 = targetX1 + (pts1.brandX - targetX1) * idleBrandCurrent;
+      const discX2 = targetX2 + (pts2.brandX - targetX2) * idleBrandCurrent;
       
-      const discX1 = targetX1 + (brandX1 - targetX1) * idleBrandCurrent;
-      const discX2 = targetX2 + (brandX2 - targetX2) * idleBrandCurrent;
-      
-      const discY1 = targetY + (brandY1 - targetY) * idleBrandCurrent;
-      const discY2 = targetY + (brandY2 - targetY) * idleBrandCurrent;
+      const discY1 = targetY + (pts1.brandY - targetY) * idleBrandCurrent;
+      const discY2 = targetY + (pts2.brandY - targetY) * idleBrandCurrent;
       
       const amp1 = visualAmps[idx1];
       const amp2 = visualAmps[idx2];
       
       const targetRx = widthSetting;
-      const brandRx = 20 * DPR;
+      const brandRx = 18 * DPR;
       const rx = targetRx + (brandRx - targetRx) * idleBrandCurrent;
       
       const ry1 = (10 * DPR) + (amp1 * 200 * DPR);
@@ -2426,12 +2515,13 @@
       
       // Calculate calligraphic radii LERPs
       const targetRx = widthSetting;
-      const brandRx = 20 * DPR;
+      const brandRx = 18 * DPR;
       const rx = targetRx + (brandRx - targetRx) * idleBrandCurrent;
       
       const targetRy = (10 * DPR) + (amp * 200 * DPR);
-      const brandThickness = Math.abs(Math.sin(normX * Math.PI * 1.5));
-      const brandRy = (12 * DPR) + brandThickness * 20 * DPR;
+      // Give letters a subtle organic thickness profile
+      const brandThickness = 0.4 + Math.abs(Math.sin(normX * Math.PI * 7)) * 0.6;
+      const brandRy = (14 * DPR) + brandThickness * 10 * DPR;
       const ry = targetRy + (brandRy - targetRy) * idleBrandCurrent;
       
       let discColor = themeAccent;
